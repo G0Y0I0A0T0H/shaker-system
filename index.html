@@ -1273,17 +1273,7 @@ preview.innerHTML = `<div class="text-center">
 reader.readAsDataURL(file);
 }
 // === Toast Notifications ===
-const Toast = {
-show: (msg, type = 'success') => {
-const colors = { success: 'bg-green-600', error: 'bg-red-600', warning: 'bg-yellow-600', info: 'bg-blue-600' };
-const container = document.getElementById('toast-container');
-const toast = document.createElement('div');
-toast.className = `toast ${colors[type]}`;
-toast.innerHTML = msg;
-container.appendChild(toast);
-setTimeout(() => { toast.style.opacity = '0'; toast.style.transform = 'translateX(-100%)'; setTimeout(() => toast.remove(), 300); }, 3000);
-}
-};
+
 // === Stock Alert System ===
 const StockAlerts = {
 getThreshold: () => parseInt(localStorage.getItem('shaker_stock_threshold') || '3'),
