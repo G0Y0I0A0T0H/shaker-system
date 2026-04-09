@@ -1060,13 +1060,7 @@ if (!savedTheme) localStorage.setItem('shaker_theme', 'dark');
 }
 })();
 // === Utility Functions ===
-const Utils = {
-generateId: () => Store.genId(),
-formatCurrency: (num) => new Intl.NumberFormat('ar-EG', { style: 'currency', currency: 'EGP' }).format(num || 0),
-formatDate: (ts) => new Date(ts).toLocaleDateString('ar-EG'),
-startOfDay: (date) => { const d = new Date(date); d.setHours(0,0,0,0); return d.getTime(); },
-endOfDay: (date) => { const d = new Date(date); d.setHours(23,59,59,999); return d.getTime(); },
-};
+
 // === Store — delegates to store.js module ===
 // Store module loaded from js/store.js
 // The Store object below is kept for backward compat with existing app code
