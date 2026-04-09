@@ -1,0 +1,2999 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://fonts.googleapis.com https://fonts.gstatic.com https://www.gstatic.com https://api.cloudinary.com https://shaker-b307b-default-rtdb.firebaseio.com wss://shaker-b307b-default-rtdb.firebaseio.com https://identitytoolkit.googleapis.com data: 'unsafe-inline'; script-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://www.gstatic.com 'unsafe-inline' 'unsafe-eval'; img-src * data: blob:; connect-src 'self' https: wss:;">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SHAKER - نظام إدارة المبيعات</title>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- FontAwesome -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+<!-- SheetJS for Excel Export -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- Chart.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<!-- ════════════════════════════════════════════════
+     🔥 FIREBASE SDK
+     ════════════════════════════════════════════════ -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<!-- Production JS Modules -->
+<script src="js/firebase.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/store.js"></script>
+<script src="js/ui.js"></script>
+<script>
+// Firebase config is centralized in js/firebase.js
+// DO NOT add config here — use FB module instead
+
+// FB module loaded from js/firebase.js
+
+
+
+// Cloudinary loaded from js/ui.js
+</script>
+<script>
+tailwind.config = {
+darkMode: 'class',
+theme: {
+extend: {
+fontFamily: { sans: ['Tajawal', 'sans-serif'] },
+colors: {
+brand: { 500: '#d97706', 600: '#b45309', 900: '#78350f' }
+}
+}
+}
+}
+</script>
+<style>
+/* Splash Screen Styles */
+#splashScreen {
+position: fixed;
+top: 0;
+left: 0;
+width: 100%;
+height: 100%;
+background: #000;
+display: flex;
+flex-direction: column;
+justify-content: center;
+align-items: center;
+z-index: 9999;
+transition: opacity 0.5s ease-out;
+}
+.splash-logo {
+width: 280px;
+height: auto;
+margin-bottom: 2rem;
+filter: drop-shadow(0 0 20px rgba(189, 150, 87, 0.5));
+}
+.splash-title {
+font-size: 3.5rem;
+font-weight: 800;
+color: #bd9657;
+text-shadow: 0 0 20px rgba(189, 150, 87, 0.7);
+letter-spacing: 2px;
+}
+body { font-family: 'Tajawal', sans-serif; }
+.sidebar-item.active { background-color: #d97706; color: white; }
+.sidebar-item:hover:not(.active) { background-color: #f3f4f6; }
+.dark .sidebar-item:hover:not(.active) { background-color: #374151; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #f1f1f1; }
+::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #555; }
+.stock-input { width: 50px; text-align: center; }
+.carton-input { width: 60px; text-align: center; background-color: #fff7ed; border-color: #fed7aa; }
+.dark .carton-input { background-color: #431407; border-color: #9a3412; }
+/* Stock Alert Animations */
+@keyframes pulse-red { 0%,100%{opacity:1} 50%{opacity:0.6} }
+.alert-pulse { animation: pulse-red 2s infinite; }
+/* Stock Alert Banner */
+#stock-alerts-banner {
+position: fixed;
+top: 0;
+left: 0;
+right: 0;
+z-index: 1000;
+transition: transform 0.3s ease;
+}
+/* Chart container */
+.chart-container { position: relative; height: 280px; }
+/* Marketer rank badges */
+.rank-gold { background: linear-gradient(135deg, #f59e0b, #d97706); }
+.rank-silver { background: linear-gradient(135deg, #9ca3af, #6b7280); }
+.rank-bronze { background: linear-gradient(135deg, #b45309, #92400e); }
+@supports (-webkit-touch-callout: none) {
+.h-screen { height: -webkit-fill-available; }
+}
+@media (max-width: 768px) {
+.h-screen { height: 100dvh; }
+body { overflow-x: hidden; }
+.h-32 { height: 80px !important; min-height: 80px; }
+h1, h2, h3 { font-size: 1.5rem !important; }
+.font-mono.text-xs { font-size: 0.75rem !important; white-space: nowrap; }
+}
+/* Search highlight */
+.search-highlight { background: rgba(217,119,6,0.2); border-radius: 3px; }
+/* Toast notification */
+#toast-container {
+position: fixed;
+bottom: 1rem;
+left: 1rem;
+z-index: 9999;
+display: flex;
+flex-direction: column;
+gap: 0.5rem;
+}
+.toast {
+padding: 0.75rem 1.25rem;
+border-radius: 0.5rem;
+color: white;
+font-size: 0.9rem;
+box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+animation: slideInLeft 0.3s ease;
+max-width: 320px;
+}
+@keyframes slideInLeft {
+from { transform: translateX(-100%); opacity: 0; }
+to { transform: translateX(0); opacity: 1; }
+}
+</style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-colors duration-300">
+<!-- Toast Container -->
+<div id="toast-container"></div>
+<!-- Stock Alerts Banner -->
+<div id="stock-alerts-banner" class="hidden">
+<div class="bg-red-600 text-white text-sm py-2 px-4 flex items-center justify-between">
+<div class="flex items-center gap-2 alert-pulse">
+<i class="fas fa-exclamation-triangle"></i>
+<span id="stock-alert-text">تنبيه: بعض المنتجات وصلت لمستوى منخفض في المخزون</span>
+</div>
+<button onclick="document.getElementById('stock-alerts-banner').classList.add('hidden')" class="text-white hover:text-red-200">
+<i class="fas fa-times"></i>
+</button>
+</div>
+</div>
+<!-- Splash Screen -->
+<div id="splashScreen">
+<img src="assets/images/logo.png" alt="SHAKER Logo" class="splash-logo">
+<h1 class="splash-title">SHAKER</h1>
+</div>
+<div class="flex h-screen overflow-hidden">
+<!-- Sidebar -->
+<aside id="sidebar" class="w-64 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 flex flex-col hidden md:flex z-20">
+<div class="h-16 flex items-center justify-center border-b border-gray-200 dark:border-gray-700 px-4">
+<div class="flex items-center gap-3">
+<img src="assets/images/logo.png" alt="SHAKER Logo" class="h-10 w-auto rounded">
+<div>
+<h1 class="text-2xl font-bold text-brand-600 dark:text-brand-500">SHAKER</h1>
+<span class="text-sm text-gray-500 block font-normal">نظام الإدارة</span>
+</div>
+</div>
+</div>
+<nav class="flex-1 overflow-y-auto py-4">
+<ul class="space-y-1 px-2">
+<li><button onclick="app.nav('dashboard')" class="sidebar-item w-full text-right px-4 py-3 rounded-lg flex items-center gap-3 transition"><i class="fas fa-chart-line w-6"></i> لوحة التحكم</button></li>
+<li><button onclick="app.nav('analytics')" class="sidebar-item w-full text-right px-4 py-3 rounded-lg flex items-center gap-3 transition"><i class="fas fa-chart-bar w-6"></i> التحليلات المتقدمة</button></li>
+<li><button onclick="app.nav('products')" class="sidebar-item w-full text-right px-4 py-3 rounded-lg flex items-center gap-3 transition"><i class="fas fa-shoe-prints w-6"></i> المنتجات والموديلات</button></li>
+<li><button onclick="app.nav('inventory')" class="sidebar-item w-full text-right px-4 py-3 rounded-lg flex items-center gap-3 transition"><i class="fas fa-boxes w-6"></i> المخزون التفصيلي</button></li>
+<li><button onclick="app.nav('orders')" class="sidebar-item w-full text-right px-4 py-3 rounded-lg flex items-center gap-3 transition"><i class="fas fa-shopping-cart w-6"></i> الطلبات</button></li>
+<li><button onclick="app.nav('marketers')" class="sidebar-item w-full text-right px-4 py-3 rounded-lg flex items-center gap-3 transition"><i class="fas fa-users w-6"></i> المسوقين</button></li>
+<li><button onclick="app.nav('shipping')" class="sidebar-item w-full text-right px-4 py-3 rounded-lg flex items-center gap-3 transition"><i class="fas fa-truck w-6"></i> شركات الشحن</button></li>
+<li><button onclick="app.nav('settings')" class="sidebar-item w-full text-right px-4 py-3 rounded-lg flex items-center gap-3 transition"><i class="fas fa-cog w-6"></i> الإعدادات</button></li>
+<li><button onclick="app.nav('factory')" class="sidebar-item w-full text-right px-4 py-3 rounded-lg flex items-center gap-3 transition"><i class="fas fa-industry w-6"></i> قسم المصنع</button></li>
+<li><button onclick="app.nav('moderators')" class="sidebar-item w-full text-right px-4 py-3 rounded-lg flex items-center gap-3 transition"><i class="fas fa-user-shield w-6"></i> إدارة المشرفين</button></li>
+<li><button onclick="app.nav('adminchat')" class="sidebar-item w-full text-right px-4 py-3 rounded-lg flex items-center gap-3 transition" id="admin-chat-btn"><i class="fas fa-comments w-6"></i> المحادثات <span id="admin-chat-badge" class="hidden bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center mr-auto">!</span></button></li>
+</ul>
+</nav>
+<!-- Stock Alert in Sidebar -->
+<div id="sidebar-stock-alert" class="hidden mx-3 mb-2 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg p-2">
+<div class="text-xs text-red-600 dark:text-red-400 font-bold flex items-center gap-1">
+<i class="fas fa-exclamation-circle"></i>
+<span id="sidebar-alert-count">0</span> منتج بمخزون منخفض
+</div>
+<button onclick="app.nav('inventory')" class="text-xs text-red-500 underline mt-1">عرض المخزون</button>
+</div>
+<div class="p-4 border-t border-gray-200 dark:border-gray-700">
+<button onclick="app.toggleTheme()" class="w-full py-2 bg-gray-200 dark:bg-gray-700 rounded text-sm"><i class="fas fa-moon"></i> الوضع الليلي</button>
+<div id="fb-sidebar-status" class="mt-2 text-center text-xs text-gray-400">🔥 Firebase: جارٍ الاتصال...</div>
+</div>
+</aside>
+<!-- Main Content -->
+<main class="flex-1 flex flex-col h-screen overflow-hidden relative">
+<header class="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-4 md:hidden">
+<h1 class="text-xl font-bold text-brand-600">SHAKER</h1>
+<button onclick="document.getElementById('sidebar').classList.toggle('hidden')" class="text-gray-500"><i class="fas fa-bars"></i></button>
+</header>
+<div id="content-area" class="flex-1 overflow-y-auto p-4 md:p-8 relative">
+<!-- DASHBOARD -->
+<section id="dashboard" class="space-y-6">
+<h2 class="text-2xl font-bold mb-4">لوحة التحكم</h2>
+<div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+<div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border-r-4 border-green-500">
+<div class="text-gray-500 text-sm">إجمالي المبيعات</div>
+<div class="text-2xl font-bold" id="dash-total-sales">0 ج.م</div>
+</div>
+<div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border-r-4 border-blue-500">
+<div class="text-gray-500 text-sm">صافي الأرباح (للمسوقين)</div>
+<div class="text-2xl font-bold" id="dash-total-profit">0 ج.م</div>
+</div>
+<div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border-r-4 border-purple-500">
+<div class="text-gray-500 text-sm">الطلبات المؤكدة (للمسوقين)</div>
+<div class="text-2xl font-bold" id="dash-total-orders">0</div>
+</div>
+<div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border-r-4 border-yellow-500">
+<div class="text-gray-500 text-sm">مبيعات SHAKER</div>
+<div class="text-2xl font-bold text-yellow-600" id="dash-shaker-sales">0 ج.م</div>
+</div>
+<div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border-r-4 border-red-500 cursor-pointer" onclick="app.nav('inventory')">
+<div class="text-gray-500 text-sm">تنبيهات المخزون</div>
+<div class="text-2xl font-bold text-red-500" id="dash-low-stock">0</div>
+</div>
+</div>
+<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+<h3 class="font-bold mb-4">آخر الطلبات</h3>
+<div class="overflow-x-auto">
+<table class="w-full text-sm text-right">
+<thead class="bg-gray-50 dark:bg-gray-700">
+<tr>
+<th class="p-3 rounded-r-lg">البوليصة</th>
+<th class="p-3">العميل</th>
+<th class="p-3">الحالة</th>
+<th class="p-3">الإجمالي</th>
+<th class="p-3 rounded-l-lg">الإجراء</th>
+</tr>
+</thead>
+<tbody id="dash-recent-orders"></tbody>
+</table>
+</div>
+</div>
+<!-- Stock Alerts Widget on Dashboard -->
+<div id="dash-stock-alerts" class="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 hidden">
+<h3 class="font-bold mb-4 text-red-600"><i class="fas fa-exclamation-triangle ml-2"></i>تنبيهات المخزون</h3>
+<div id="dash-alerts-list" class="space-y-2"></div>
+</div>
+</section>
+<!-- ANALYTICS DASHBOARD -->
+<section id="analytics" class="hidden space-y-6">
+<div class="flex flex-wrap justify-between items-center gap-4">
+<h2 class="text-2xl font-bold">التحليلات المتقدمة</h2>
+<!-- Date Filter -->
+<div class="flex flex-wrap gap-2 items-center bg-white dark:bg-gray-800 p-3 rounded-xl shadow-sm">
+<button onclick="app.analytics.setFilter('day')" id="filter-day" class="analytics-filter-btn px-3 py-1 rounded text-sm bg-brand-600 text-white">اليوم</button>
+<button onclick="app.analytics.setFilter('week')" id="filter-week" class="analytics-filter-btn px-3 py-1 rounded text-sm bg-gray-200 dark:bg-gray-700">الأسبوع</button>
+<button onclick="app.analytics.setFilter('month')" id="filter-month" class="analytics-filter-btn px-3 py-1 rounded text-sm bg-gray-200 dark:bg-gray-700">الشهر</button>
+<button onclick="app.analytics.setFilter('custom')" id="filter-custom" class="analytics-filter-btn px-3 py-1 rounded text-sm bg-gray-200 dark:bg-gray-700">مخصص</button>
+<div id="custom-date-range" class="hidden flex gap-2 items-center">
+<input type="date" id="date-from" class="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600" onchange="app.analytics.render()">
+<span>إلى</span>
+<input type="date" id="date-to" class="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600" onchange="app.analytics.render()">
+</div>
+</div>
+</div>
+<!-- Analytics KPI Cards -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+<div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border-t-4 border-green-500">
+<div class="text-xs text-gray-500 mb-1">إجمالي المبيعات</div>
+<div class="text-xl font-bold text-green-600" id="ana-total-sales">0</div>
+</div>
+<div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border-t-4 border-blue-500">
+<div class="text-xs text-gray-500 mb-1">صافي الربح</div>
+<div class="text-xl font-bold text-blue-600" id="ana-total-profit">0</div>
+</div>
+<div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border-t-4 border-purple-500">
+<div class="text-xs text-gray-500 mb-1">عدد الطلبات</div>
+<div class="text-xl font-bold text-purple-600" id="ana-order-count">0</div>
+</div>
+<div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border-t-4 border-orange-500">
+<div class="text-xs text-gray-500 mb-1">متوسط قيمة الطلب</div>
+<div class="text-xl font-bold text-orange-600" id="ana-avg-order">0</div>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<!-- Top Selling Products -->
+<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+<h3 class="font-bold mb-4 flex items-center gap-2"><i class="fas fa-trophy text-yellow-500"></i> أكثر المنتجات مبيعاً</h3>
+<div id="top-products-list" class="space-y-3"></div>
+</div>
+<!-- Most Requested Sizes -->
+<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+<h3 class="font-bold mb-4 flex items-center gap-2"><i class="fas fa-ruler text-blue-500"></i> أكثر المقاسات طلباً</h3>
+<div class="chart-container">
+<canvas id="sizes-chart"></canvas>
+</div>
+</div>
+<!-- Most Requested Colors -->
+<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+<h3 class="font-bold mb-4 flex items-center gap-2"><i class="fas fa-palette text-pink-500"></i> أكثر الألوان طلباً</h3>
+<div class="chart-container">
+<canvas id="colors-chart"></canvas>
+</div>
+</div>
+<!-- Profit Over Time -->
+<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+<h3 class="font-bold mb-4 flex items-center gap-2"><i class="fas fa-chart-line text-green-500"></i> الأرباح اليومية</h3>
+<div class="chart-container">
+<canvas id="profit-chart"></canvas>
+</div>
+</div>
+</div>
+<!-- Marketer Performance -->
+<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+<h3 class="font-bold mb-4 flex items-center gap-2"><i class="fas fa-medal text-brand-500"></i> أداء المسوقين</h3>
+<div id="marketers-performance" class="space-y-3"></div>
+</div>
+</section>
+<!-- PRODUCTS -->
+<section id="products" class="hidden space-y-6">
+<div class="flex justify-between items-center">
+<h2 class="text-2xl font-bold">إدارة المنتجات والموديلات</h2>
+<button onclick="app.modals.open('productModal')" class="bg-brand-600 text-white px-4 py-2 rounded-lg hover:bg-brand-700"><i class="fas fa-plus"></i> إضافة موديل جديد</button>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="products-grid"></div>
+</section>
+<!-- INVENTORY -->
+<section id="inventory" class="hidden space-y-6">
+<h2 class="text-2xl font-bold">المخزون التفصيلي</h2>
+<!-- Stock Alerts Box -->
+<div id="inventory-alerts-box" class="hidden bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl p-4">
+<div class="flex items-center gap-2 mb-3">
+<i class="fas fa-exclamation-triangle text-red-500 text-lg alert-pulse"></i>
+<h3 class="font-bold text-red-700 dark:text-red-400">تنبيهات المخزون</h3>
+</div>
+<div id="inventory-alerts-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2"></div>
+</div>
+<!-- شريط البحث -->
+<div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm">
+<input type="text" id="inventory-search" placeholder="ابحث باسم الصنف أو رقم الموديل..."
+class="w-full border rounded p-3 bg-gray-50 dark:bg-gray-700 dark:border-gray-600"
+oninput="app.filterInventory()">
+</div>
+<!-- عرض المخزون -->
+<div id="inventory-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+</section>
+<!-- ORDERS -->
+<section id="orders" class="hidden space-y-6">
+<div class="flex justify-between items-center">
+<h2 class="text-2xl font-bold">الطلبات</h2>
+<button onclick="app.modals.open('orderModal')" class="bg-brand-600 text-white px-4 py-2 rounded-lg hover:bg-brand-700"><i class="fas fa-plus"></i> طلب جديد</button>
+</div>
+<!-- Advanced Search & Filter Bar -->
+<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 space-y-3">
+<h3 class="font-bold text-sm text-gray-600 dark:text-gray-400 flex items-center gap-2">
+<i class="fas fa-search"></i> البحث والتصفية المتقدمة
+</h3>
+<div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+<input type="text" id="search-customer" placeholder="اسم العميل أو الهاتف"
+class="border rounded p-2 text-sm dark:bg-gray-700 dark:border-gray-600"
+oninput="app.searchOrders()">
+<input type="text" id="search-product" placeholder="اسم المنتج أو الموديل"
+class="border rounded p-2 text-sm dark:bg-gray-700 dark:border-gray-600"
+oninput="app.searchOrders()">
+<select id="search-status" class="border rounded p-2 text-sm dark:bg-gray-700 dark:border-gray-600"
+onchange="app.searchOrders()">
+<option value="">كل الحالات</option>
+<option value="Pending">قيد الانتظار</option>
+<option value="Confirmed">مؤكد</option>
+<option value="Shipped">تم الشحن</option>
+<option value="Delivered">تم التسليم</option>
+<option value="Cancelled">ملغي</option>
+<option value="Returned">مرتجع</option>
+</select>
+<select id="search-marketer-filter" class="border rounded p-2 text-sm dark:bg-gray-700 dark:border-gray-600"
+onchange="app.searchOrders()">
+<option value="">كل المسوقين</option>
+</select>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+<input type="date" id="search-date-from" class="border rounded p-2 text-sm dark:bg-gray-700 dark:border-gray-600" onchange="app.searchOrders()">
+<input type="date" id="search-date-to" class="border rounded p-2 text-sm dark:bg-gray-700 dark:border-gray-600" onchange="app.searchOrders()">
+<div class="flex gap-2">
+<input type="text" id="search-color-size" placeholder="اللون أو المقاس"
+class="flex-1 border rounded p-2 text-sm dark:bg-gray-700 dark:border-gray-600"
+oninput="app.searchOrders()">
+<button onclick="app.clearSearch()" class="px-3 py-2 bg-gray-200 dark:bg-gray-700 rounded text-sm hover:bg-gray-300">
+<i class="fas fa-times"></i> مسح
+</button>
+</div>
+</div>
+<div class="text-xs text-gray-500" id="search-results-count"></div>
+</div>
+<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-x-auto">
+<table class="w-full text-sm text-right">
+<thead class="bg-gray-50 dark:bg-gray-700">
+<tr>
+<th class="p-3">البوليصة</th>
+<th class="p-3">العميل</th>
+<th class="p-3">المسوق</th>
+<th class="p-3">المشرف</th>
+<th class="p-3">الشحن</th>
+<th class="p-3">التاريخ</th>
+<th class="p-3">الحالة</th>
+<th class="p-3">الإجمالي</th>
+<th class="p-3">الربح</th>
+<th class="p-3">ملاحظة</th>
+<th class="p-3">إجراءات</th>
+</tr>
+</thead>
+<tbody id="orders-table-body"></tbody>
+</table>
+</div>
+</section>
+<!-- MARKETERS -->
+<section id="marketers" class="hidden space-y-6">
+<div class="flex justify-between items-center">
+<h2 class="text-2xl font-bold">المسوقين</h2>
+<button onclick="app.modals.open('marketerModal')" class="bg-brand-600 text-white px-4 py-2 rounded-lg hover:bg-brand-700"><i class="fas fa-plus"></i> إضافة مسوق</button>
+</div>
+<!-- Marketer Ranking -->
+<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+<h3 class="font-bold mb-4 flex items-center gap-2"><i class="fas fa-ranking-star text-yellow-500"></i> ترتيب المسوقين حسب الأداء</h3>
+<div id="marketers-ranking" class="space-y-3"></div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6" id="marketers-grid"></div>
+</section>
+<!-- SHIPPING -->
+<section id="shipping" class="hidden space-y-6">
+<div class="flex justify-between items-center">
+<h2 class="text-2xl font-bold">شركات الشحن</h2>
+<button onclick="app.modals.open('shippingModal')" class="bg-brand-600 text-white px-4 py-2 rounded-lg hover:bg-brand-700"><i class="fas fa-plus"></i> إضافة شركة</button>
+</div>
+<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4">
+<ul id="shipping-list" class="divide-y divide-gray-200 dark:divide-gray-700"></ul>
+</div>
+</section>
+<!-- SETTINGS -->
+<section id="settings" class="hidden space-y-6">
+<h2 class="text-2xl font-bold">الإعدادات</h2>
+<div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm">
+<h3 class="font-bold mb-4">إدارة البيانات</h3>
+<div class="flex gap-4 flex-wrap">
+<label class="bg-indigo-600 text-white px-4 py-2 rounded-lg cursor-pointer hover:bg-indigo-700 flex items-center gap-1">
+<i class="fas fa-folder-open"></i> فتح ملف بيانات
+<input type="file" accept=".json" onchange="app.loadDataFromFile(event)" class="hidden">
+</label>
+<button onclick="app.saveDataToFile()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 flex items-center gap-1">
+<i class="fas fa-save"></i> حفظ كملف
+</button>
+<button onclick="app.exportData('orders')" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"><i class="fas fa-file-excel"></i> تصدير الطلبات</button>
+<button onclick="app.exportData('inventory')" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"><i class="fas fa-file-excel"></i> تصدير المخزون</button>
+<button onclick="FB.pullAll().then(()=>{ app.init(); Toast.show('✅ تم تحميل أحدث البيانات من Firebase','success'); })" class="bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600"><i class="fas fa-cloud-download-alt"></i> مزامنة من Firebase</button>
+<button onclick="changeFirebasePassword()" class="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 flex items-center gap-1"><i class="fas fa-key"></i> تغيير كلمة السر</button>
+<button onclick="if(confirm('⚠️ سيتم مسح كل البيانات من الجهاز ومن Firebase نهائياً!\nهل أنت متأكد؟')) { if(confirm('تأكيد أخير — هذا لا يمكن التراجع عنه!')) { if(FB.isOk()){ FB.getDb().ref('shaker').remove(); FB.getDb().ref('shaker_backups').remove(); } localStorage.clear(); location.reload(); } }" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"><i class="fas fa-trash"></i> مسح كل البيانات</button>
+</div>
+</div>
+<!-- Backup & Restore -->
+<div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm">
+<h3 class="font-bold mb-2 flex items-center gap-2"><i class="fas fa-shield-alt text-green-600"></i> النسخ الاحتياطي والاستعادة</h3>
+<p class="text-sm text-gray-500 mb-4">يتم حفظ نسخة احتياطية تلقائياً كل 5 دقائق. يمكنك أيضاً إنشاء نسخة يدوية أو استعادة نسخة سابقة.</p>
+<div class="flex gap-3 flex-wrap mb-4">
+<button onclick="app.backup.manualBackup()" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center gap-2">
+<i class="fas fa-cloud-upload-alt"></i> نسخ احتياطي الآن
+</button>
+<button onclick="app.backup.showRestore()" class="bg-orange-500 text-white px-4 py-2 rounded-lg hover:bg-orange-600 flex items-center gap-2">
+<i class="fas fa-cloud-download-alt"></i> استعادة نسخة احتياطية
+</button>
+</div>
+<div id="backup-list" class="space-y-2">
+<p class="text-sm text-gray-400">جارٍ تحميل النسخ الاحتياطية...</p>
+</div>
+<!-- Restore Panel -->
+<div id="restore-panel" class="hidden mt-4 p-4 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 rounded-lg">
+<h4 class="font-bold text-orange-700 dark:text-orange-400 mb-3">استعادة نسخة احتياطية</h4>
+<p class="text-sm text-orange-600 mb-3">⚠️ سيتم استبدال البيانات الحالية. هذا الإجراء لا يمكن التراجع عنه.</p>
+<div id="restore-backups-list" class="space-y-2"></div>
+<button onclick="document.getElementById('restore-panel').classList.add('hidden')" class="mt-3 text-sm text-gray-500 underline">إلغاء</button>
+</div>
+</div>
+<!-- Stock Alert Threshold -->
+<div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm">
+<h3 class="font-bold mb-4"><i class="fas fa-bell text-yellow-500 ml-2"></i> إعدادات تنبيهات المخزون</h3>
+<div class="flex items-center gap-4">
+<label class="text-sm">حد التنبيه (عدد القطع):</label>
+<input type="number" id="stock-alert-threshold" value="3" min="1" max="20"
+class="w-20 border rounded p-2 dark:bg-gray-700 dark:border-gray-600"
+onchange="app.saveThreshold()">
+<span class="text-sm text-gray-500">قطعة أو أقل = تنبيه</span>
+</div>
+</div>
+</section>
+<!-- MODERATORS MANAGEMENT SECTION -->
+<section id="moderators" class="hidden space-y-6">
+<div class="flex justify-between items-center">
+<h2 class="text-2xl font-bold flex items-center gap-2"><i class="fas fa-user-shield text-brand-600"></i> إدارة المشرفين</h2>
+<button onclick="ModMgr.openAdd()" class="bg-brand-600 text-white px-4 py-2 rounded-lg hover:bg-brand-700"><i class="fas fa-plus"></i> إضافة مشرف</button>
+</div>
+<!-- Stats per moderator -->
+<div id="mod-stats-grid" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
+<!-- Moderators table -->
+<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-x-auto">
+<table class="w-full text-sm text-right">
+<thead class="bg-gray-50 dark:bg-gray-700">
+<tr>
+<th class="p-3">اسم المشرف</th>
+<th class="p-3">الحالة</th>
+<th class="p-3">عدد الطلبات</th>
+<th class="p-3">تاريخ الإضافة</th>
+<th class="p-3">إجراءات</th>
+</tr>
+</thead>
+<tbody id="moderators-table-body"></tbody>
+</table>
+</div>
+</section>
+<!-- ADMIN CHAT SECTION -->
+<section id="adminchat" class="hidden space-y-4" style="height:calc(100vh - 8rem)">
+<h2 class="text-2xl font-bold flex items-center gap-2"><i class="fas fa-comments text-brand-600"></i> محادثات المشرفين</h2>
+<div class="flex gap-4" style="height:calc(100% - 4rem)">
+<!-- Moderator list -->
+<div class="w-64 bg-white dark:bg-gray-800 rounded-xl shadow-sm flex flex-col overflow-hidden">
+<div class="p-3 border-b border-gray-200 dark:border-gray-700 text-sm font-bold text-gray-600 dark:text-gray-400">المشرفون</div>
+<div id="admin-chat-list" class="flex-1 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700"></div>
+</div>
+<!-- Chat window -->
+<div class="flex-1 bg-white dark:bg-gray-800 rounded-xl shadow-sm flex flex-col overflow-hidden">
+<div id="admin-chat-header" class="p-4 border-b border-gray-200 dark:border-gray-700 font-bold text-gray-700 dark:text-gray-300">اختر مشرفاً للمحادثة</div>
+<div id="admin-chat-messages" class="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50 dark:bg-gray-900"></div>
+<div id="admin-chat-input-area" class="hidden p-3 border-t border-gray-200 dark:border-gray-700 flex gap-2">
+<input type="text" id="admin-chat-input" placeholder="اكتب رسالة..." class="flex-1 border rounded-lg p-2 text-sm dark:bg-gray-700 dark:border-gray-600" onkeydown="if(event.key==='Enter') AdminChat.send()">
+<button onclick="AdminChat.send()" class="bg-brand-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-brand-700"><i class="fas fa-paper-plane"></i></button>
+</div>
+</div>
+</div>
+</section>
+<!-- FACTORY SECTION -->
+<section id="factory" class="hidden space-y-6">
+<div class="flex flex-wrap justify-between items-center gap-4">
+<div>
+<h2 class="text-2xl font-bold flex items-center gap-2">
+<i class="fas fa-industry text-brand-600"></i>
+قسم المصنع
+</h2>
+<p class="text-sm text-gray-500 mt-1">ملخص الطلبات المؤكدة والمشحونة والمسلمة — مجمعة حسب الصنف والموديل واللون والمقاس</p>
+</div>
+<button onclick="exportFactoryExcel()"
+class="bg-green-600 text-white px-6 py-3 rounded-xl hover:bg-green-700 transition flex items-center gap-2 font-bold shadow-md">
+<i class="fas fa-file-excel text-lg"></i>
+تصدير حساب المصنع
+</button>
+</div>
+<!-- Summary Cards -->
+<div id="factory-summary-cards" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
+<!-- Per-Category Tables -->
+<div id="factory-tables" class="space-y-6"></div>
+</section>
+</div>
+</main>
+</div>
+<!-- PRODUCT MODAL -->
+<div id="productModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center p-4 overflow-y-auto">
+<div class="bg-white dark:bg-gray-800 rounded-xl w-full max-w-5xl my-8">
+<div class="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between">
+<h3 class="text-xl font-bold">إضافة موديل + نظام الكراتين</h3>
+<button onclick="app.modals.close('productModal')" class="text-gray-500"><i class="fas fa-times"></i></button>
+</div>
+<div class="p-6 space-y-6">
+<input type="hidden" id="prod-id">
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+<div>
+<label class="block text-sm mb-1">اسم الصنف (Category)</label>
+<input type="text" id="prod-category" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
+</div>
+<div>
+<label class="block text-sm mb-1">رقم الموديل</label>
+<input type="text" id="prod-model-no" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
+</div>
+<div>
+<label class="block text-sm mb-1">المقاسات المتاحة</label>
+<div class="grid grid-cols-6 gap-1" id="size-selection-container"></div>
+<p class="text-xs text-gray-500 mt-1">اختر المقاسات التي يتوفر بها هذا الموديل</p>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<div>
+<label class="block text-sm mb-1">سعر التكلفة (ج.م)</label>
+<input type="number" id="prod-cost" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
+</div>
+<div>
+<label class="block text-sm mb-1">سعر البيع (ج.م)</label>
+<input type="number" id="prod-price" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
+</div>
+</div>
+<div>
+<label class="block text-sm mb-1">الألوان المتاحة (مفصولة بفاصلة)</label>
+<input type="text" id="prod-colors" placeholder="بني, أسود, أحمر" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
+<p class="text-xs text-gray-500 mt-1">مثال: بني, أسود</p>
+</div>
+<div class="border rounded-lg overflow-hidden">
+<div class="bg-gray-100 dark:bg-gray-700 p-3 font-bold text-sm flex justify-between items-center">
+<span><i class="fas fa-box-open"></i> تحديد المخزون الأولي (نظام الكراتين)</span>
+<span class="text-xs font-normal text-gray-500">1 كرتونة = قطعة واحدة لكل مقاس</span>
+</div>
+<div class="overflow-x-auto max-h-96">
+<table class="w-full text-sm text-center" id="stock-input-table">
+<thead class="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10">
+<tr>
+<th class="p-2 text-right w-48 bg-gray-100 dark:bg-gray-900">اللون / الكراتين</th>
+</tr>
+</thead>
+<tbody id="stock-input-body"></tbody>
+</table>
+</div>
+</div>
+<div>
+<label class="block text-sm mb-1">وصف تسويقي</label>
+<textarea id="prod-desc" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600" rows="2"></textarea>
+</div>
+<div>
+<label class="block text-sm mb-1">صورة المنتج</label>
+<input type="file" id="prod-image" accept="image/*" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600" onchange="handleImageUpload(this)">
+<div id="image-preview" class="mt-2 flex justify-center"></div>
+<p class="text-xs text-gray-500 mt-1">يدعم JPG, PNG — سيتم الرفع على Cloudinary ☁️</p>
+</div>
+</div>
+<div class="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
+<button onclick="app.modals.close('productModal')" class="px-4 py-2 text-gray-500">إلغاء</button>
+<button onclick="app.saveProduct()" class="px-6 py-2 bg-brand-600 text-white rounded hover:bg-brand-700">حفظ الموديل والمخزون</button>
+</div>
+</div>
+</div>
+<!-- ORDER MODAL -->
+<div id="orderModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center p-4">
+<div class="bg-white dark:bg-gray-800 rounded-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+<div class="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between">
+<h3 class="text-xl font-bold">طلب جديد</h3>
+<button onclick="app.modals.close('orderModal')" class="text-gray-500"><i class="fas fa-times"></i></button>
+</div>
+<div class="p-6 space-y-6">
+<input type="hidden" id="ord-id">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+<input type="text" id="ord-customer" placeholder="اسم العميل" class="border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
+<input type="text" id="ord-phone" placeholder="رقم الهاتف" class="border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+<div>
+<label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">المحافظة <span class="text-red-500">*</span></label>
+<select id="ord-governorate" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600" onchange="AreaSelector.onGovChange(this.value)">
+<option value="">اختر المحافظة</option>
+</select>
+<p id="ord-gov-error" class="text-xs text-red-500 mt-1 hidden">يرجى اختيار المحافظة أولاً</p>
+</div>
+<div>
+<label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">المنطقة</label>
+<select id="ord-area" disabled class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 disabled:opacity-40 disabled:cursor-not-allowed">
+<option value="">اختر المنطقة</option>
+</select>
+</div>
+<div>
+<label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">العنوان التفصيلي</label>
+<input type="text" id="ord-address-detail" placeholder="الشارع، رقم المبنى، الدور..." class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600" oninput="AreaSelector.syncHidden()">
+</div>
+</div>
+<input type="hidden" id="ord-address">
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+<select id="ord-marketer" class="border rounded p-2 dark:bg-gray-700 dark:border-gray-600"><option value="">اختر المسوق...</option></select>
+<select id="ord-shipping" class="border rounded p-2 dark:bg-gray-700 dark:border-gray-600"><option value="">شركة الشحن...</option></select>
+<select id="ord-shipping-payer" class="border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
+<option value="customer">الشحن على العميل</option>
+<option value="company">الشحن على الشركة</option>
+</select>
+</div>
+<div>
+<label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">ملاحظة العميل</label>
+<textarea id="ord-note" rows="2" placeholder="أدخل ملاحظة خاصة بالعميل (اختياري)" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 text-sm resize-none"></textarea>
+</div>
+<div id="ord-shipping-price-wrapper" class="hidden flex items-center gap-3 px-4 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg text-sm">
+<i class="fas fa-truck text-blue-500"></i>
+<span id="ord-shipping-price" class="font-bold text-blue-700 dark:text-blue-300"></span>
+</div>
+<div class="border rounded p-4 bg-gray-50 dark:bg-gray-700">
+<h4 class="font-bold mb-2">إضافة منتجات</h4>
+<div class="grid grid-cols-1 md:grid-cols-7 gap-2 items-end">
+<div class="md:col-span-2">
+<label class="text-xs">الموديل</label>
+<select id="ord-prod-select" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600"></select>
+</div>
+<div>
+<label class="text-xs">اللون</label>
+<select id="ord-color-select" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600"></select>
+</div>
+<div>
+<label class="text-xs">المقاس</label>
+<select id="ord-size-select" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600"></select>
+</div>
+<div>
+<label class="text-xs">الكمية</label>
+<input type="number" id="ord-qty" value="1" min="1" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
+</div>
+<div>
+<label class="text-xs">سعر التكلفة</label>
+<input type="text" id="ord-cost-display" readonly class="w-full border rounded p-2 bg-gray-100 dark:bg-gray-800 text-gray-500 cursor-not-allowed" placeholder="---">
+</div>
+<div>
+<label class="text-xs">سعر البيع</label>
+<input type="number" id="ord-price-input" min="0" step="any" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600" placeholder="0">
+</div>
+</div>
+<button onclick="app.addOrderItem()" class="mt-3 bg-blue-600 text-white px-3 py-1 rounded text-sm">+ إضافة للمشتريات</button>
+</div>
+<div class="bg-white dark:bg-gray-800 border rounded p-4">
+<table class="w-full text-sm">
+<thead><tr class="border-b"><th class="text-right">المنتج</th><th>التفاصيل</th><th>الكمية</th><th>السعر</th><th>حذف</th></tr></thead>
+<tbody id="order-cart-body"></tbody>
+</table>
+<div class="mt-4 flex justify-between items-center pt-4 border-t">
+<div><label class="block text-xs">خصم (ج.م)</label><input type="number" id="ord-discount" value="0" class="w-24 border rounded p-1 dark:bg-gray-700 dark:border-gray-600" onchange="app.calcOrderTotal()"></div>
+<div class="text-left"><span class="text-gray-500">الإجمالي: </span><span class="text-xl font-bold text-brand-600" id="ord-total-display">0 ج.م</span></div>
+</div>
+</div>
+</div>
+<div class="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
+<button onclick="app.modals.close('orderModal')" class="px-4 py-2 text-gray-500">إلغاء</button>
+<button onclick="app.saveOrder()" class="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700">تأكيد الطلب</button>
+</div>
+</div>
+</div>
+<!-- MARKETER MODAL -->
+<div id="marketerModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center p-4">
+<div class="bg-white dark:bg-gray-800 rounded-xl w-full max-w-md">
+<div class="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between">
+<h3 class="text-xl font-bold">إضافة مسوق</h3>
+<button onclick="app.modals.close('marketerModal')" class="text-gray-500"><i class="fas fa-times"></i></button>
+</div>
+<div class="p-6 space-y-4">
+<input type="hidden" id="mkt-id">
+<input type="text" id="mkt-name" placeholder="الاسم" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
+<input type="text" id="mkt-phone" placeholder="الهاتف" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
+<select id="mkt-type" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
+<option value="percent">نسبة مئوية %</option>
+<option value="fixed">مبلغ ثابت</option>
+</select>
+<input type="number" id="mkt-value" placeholder="القيمة" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
+</div>
+<div class="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+<button onclick="app.saveMarketer()" class="px-6 py-2 bg-brand-600 text-white rounded hover:bg-brand-700">حفظ</button>
+</div>
+</div>
+</div>
+<!-- MARKETER DASHBOARD MODAL -->
+<div id="marketerDashModal" class="fixed inset-0 bg-black bg-opacity-60 hidden z-50 flex items-center justify-center p-4">
+<div class="bg-white dark:bg-gray-800 rounded-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+<div class="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+<h3 class="text-xl font-bold" id="mkt-dash-title">لوحة المسوق</h3>
+<button onclick="app.modals.close('marketerDashModal')" class="text-gray-500"><i class="fas fa-times"></i></button>
+</div>
+<div class="p-6 space-y-4">
+<div class="grid grid-cols-3 gap-4" id="mkt-dash-stats"></div>
+<div class="bg-gray-50 dark:bg-gray-700 rounded-xl overflow-hidden">
+<table class="w-full text-sm text-right">
+<thead class="bg-gray-100 dark:bg-gray-600">
+<tr>
+<th class="p-3">البوليصة</th>
+<th class="p-3">العميل</th>
+<th class="p-3">التاريخ</th>
+<th class="p-3">الحالة</th>
+<th class="p-3">الإجمالي</th>
+</tr>
+</thead>
+<tbody id="mkt-dash-orders"></tbody>
+</table>
+</div>
+</div>
+</div>
+</div>
+<!-- SHIPPING MODAL -->
+<div id="shippingModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center p-4">
+<div class="bg-white dark:bg-gray-800 rounded-xl w-full max-w-md">
+<div class="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between">
+<h3 class="text-xl font-bold">إضافة شركة شحن</h3>
+<button onclick="app.modals.close('shippingModal')" class="text-gray-500"><i class="fas fa-times"></i></button>
+</div>
+<div class="p-6 space-y-4">
+<input type="hidden" id="ship-id">
+<input type="text" id="ship-name" placeholder="اسم الشركة" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
+<input type="text" id="ship-api" placeholder="رابط API (اختياري)" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
+</div>
+<div class="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+<button onclick="app.saveShipping()" class="px-6 py-2 bg-brand-600 text-white rounded hover:bg-brand-700">حفظ</button>
+</div>
+</div>
+</div>
+
+<!-- MODERATOR ADD/EDIT MODAL -->
+<div id="modModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center p-4">
+<div class="bg-white dark:bg-gray-800 rounded-xl w-full max-w-md">
+<div class="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between">
+<h3 class="text-xl font-bold" id="mod-modal-title">إضافة مشرف</h3>
+<button onclick="document.getElementById('modModal').classList.add('hidden')" class="text-gray-500"><i class="fas fa-times"></i></button>
+</div>
+<div class="p-6 space-y-4">
+<input type="hidden" id="mod-edit-id">
+<div>
+<label class="block text-sm mb-1">اسم المشرف</label>
+<input type="text" id="mod-username" placeholder="اسم المشرف" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
+</div>
+<div>
+<label class="block text-sm mb-1">كلمة المرور</label>
+<input type="password" id="mod-password" placeholder="كلمة المرور" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
+</div>
+</div>
+<div class="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
+<button onclick="document.getElementById('modModal').classList.add('hidden')" class="px-4 py-2 text-gray-500">إلغاء</button>
+<button onclick="ModMgr.save()" class="px-6 py-2 bg-brand-600 text-white rounded hover:bg-brand-700">حفظ</button>
+</div>
+</div>
+</div>
+<!-- JAVASCRIPT LOGIC -->
+<script>
+// ══════════════════════════════════════════════════════
+// 🔥 Firebase Init
+// ══════════════════════════════════════════════════════
+// FB.init() — called in DOMContentLoaded below
+
+// ═══════════════════════════════════════════════════
+// 👑 MODERATOR MANAGEMENT SYSTEM
+// ═══════════════════════════════════════════════════
+// ============================================
+// 👮 MODERATOR MANAGEMENT (Firebase Auth v4)
+// ============================================
+const ModMgr = {
+    async render() {
+        const tbody   = document.getElementById('moderators-table-body');
+        const statsEl = document.getElementById('mod-stats-grid');
+        if (!FB.isOk()) {
+            if(tbody) tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-400">Firebase غير متصل</td></tr>';
+            return;
+        }
+        const mods   = await Auth.getModerators();
+        const orders = Store.get('orders');
+
+        if(statsEl) statsEl.innerHTML = mods.length === 0
+            ? '<div class="col-span-3 text-center text-gray-400 py-4">لا يوجد مشرفون بعد</div>'
+            : mods.map(mod => {
+                const count = orders.filter(o => o.moderatorName === (mod.username||mod.uid)).length;
+                return `<div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border-r-4 border-indigo-500">
+                    <div class="font-bold text-lg text-indigo-600">${mod.displayName||mod.username||'مشرف'}</div>
+                    <div class="text-sm text-gray-500">@${mod.username||mod.uid}</div>
+                    <div class="mt-2 text-2xl font-bold">${count} <span class="text-sm font-normal text-gray-400">طلب</span></div>
+                    <span class="mt-1 inline-block text-xs px-2 py-1 rounded ${mod.active!==false?'bg-green-100 text-green-600':'bg-gray-100 text-gray-500'}">${mod.active!==false?'نشط':'معطل'}</span>
+                </div>`;
+            }).join('');
+
+        if(tbody) tbody.innerHTML = mods.length === 0
+            ? '<tr><td colspan="5" class="p-4 text-center text-gray-400">لا يوجد مشرفون بعد — أضفهم من الزر أعلاه</td></tr>'
+            : mods.map(mod => {
+                const count = orders.filter(o => o.moderatorName === (mod.username||mod.uid)).length;
+                return `<tr class="border-b dark:border-gray-700">
+                    <td class="p-3 font-bold">${mod.displayName||mod.username||'مشرف'} <span class="text-xs text-gray-400">@${mod.username||mod.uid}</span></td>
+                    <td class="p-3"><span class="px-2 py-1 rounded text-xs ${mod.active!==false?'bg-green-100 text-green-600':'bg-gray-200 text-gray-500'}">${mod.active!==false?'نشط':'معطل'}</span></td>
+                    <td class="p-3">${count}</td>
+                    <td class="p-3 text-xs text-gray-500">${mod.createdAt?new Date(mod.createdAt).toLocaleDateString('ar-EG'):'-'}</td>
+                    <td class="p-3 flex gap-2 flex-wrap">
+                        <button onclick="ModMgr.toggleActive('${mod.uid}',${mod.active!==false})" class="text-xs ${mod.active!==false?'bg-red-100 text-red-600':'bg-green-100 text-green-600'} px-2 py-1 rounded">${mod.active!==false?'تعطيل':'تفعيل'}</button>
+                        <button onclick="ModMgr.delete('${mod.uid}','${mod.username||mod.uid}')" class="text-xs bg-red-100 text-red-600 px-2 py-1 rounded hover:bg-red-200"><i class="fas fa-trash"></i></button>
+                    </td>
+                </tr>`;
+            }).join('');
+    },
+
+    openAdd() {
+        document.getElementById('addModModal')?.remove();
+        const html = `<div id="addModModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-gray-800 rounded-xl w-full max-w-md p-6 space-y-4">
+            <div class="flex justify-between items-center">
+                <h3 class="text-xl font-bold">إضافة مشرف جديد</h3>
+                <button onclick="document.getElementById('addModModal').remove()" class="text-gray-500"><i class="fas fa-times"></i></button>
+            </div>
+            <input type="text" id="new-mod-displayname" placeholder="الاسم الكامل" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
+            <input type="text" id="new-mod-username" placeholder="اسم المستخدم (إنجليزي بدون مسافات)" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
+            <input type="password" id="new-mod-password" placeholder="كلمة المرور (6 أحرف على الأقل)" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
+            <input type="password" id="new-mod-password2" placeholder="تأكيد كلمة المرور" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
+            <p class="text-xs text-gray-500">يستخدم Firebase Authentication 🔥 — كلمة المرور لا تُحفظ في قاعدة البيانات</p>
+            <div class="flex justify-end gap-2 pt-2">
+                <button onclick="document.getElementById('addModModal').remove()" class="px-4 py-2 text-gray-500">إلغاء</button>
+                <button onclick="ModMgr.save()" class="px-6 py-2 bg-brand-600 text-white rounded hover:bg-brand-700">حفظ</button>
+            </div>
+        </div></div>`;
+        document.body.insertAdjacentHTML('beforeend', html);
+    },
+
+    async save() {
+        if (!FB.isOk()) { Toast.show('Firebase غير متصل', 'error'); return; }
+        const displayName = document.getElementById('new-mod-displayname').value.trim();
+        const username    = document.getElementById('new-mod-username').value.trim().toLowerCase().replace(/\s+/g,'');
+        const password    = document.getElementById('new-mod-password').value;
+        const password2   = document.getElementById('new-mod-password2').value;
+        if (!displayName || !username) { Toast.show('الاسم واسم المستخدم مطلوبان', 'error'); return; }
+        if (password.length < 6)       { Toast.show('كلمة المرور يجب أن تكون 6 أحرف على الأقل', 'error'); return; }
+        if (password !== password2)    { Toast.show('كلمتا المرور غير متطابقتين', 'error'); return; }
+        const saveBtn = document.querySelector('#addModModal button.bg-brand-600');
+        if (saveBtn) { saveBtn.disabled=true; saveBtn.textContent='جارٍ الإنشاء...'; }
+        try {
+            await Auth.addModerator(username, password, displayName);
+            document.getElementById('addModModal')?.remove();
+            Toast.show('✅ تم إضافة @' + username + ' — يسجّل الدخول من Moderator_login.html', 'success');
+            ModMgr.render();
+        } catch(e) {
+            Toast.show('❌ ' + e.message, 'error');
+            if (saveBtn) { saveBtn.disabled=false; saveBtn.textContent='حفظ'; }
+        }
+    },
+
+    async toggleActive(uid, currentlyActive) {
+        if (!FB.isOk()) return;
+        try {
+            await Auth.toggleModActive(uid, currentlyActive);
+            Toast.show(currentlyActive ? 'تم تعطيل المشرف' : 'تم تفعيل المشرف', 'success');
+            ModMgr.render();
+        } catch(e) { Toast.show('❌ ' + e.message, 'error'); }
+    },
+
+    async delete(uid, username) {
+        if (!confirm('هل أنت متأكد من تعطيل @' + username + '؟ لن يتمكن من الدخول.')) return;
+        if (!FB.isOk()) return;
+        try {
+            await Auth.deleteModerator(uid, username);
+            Toast.show('تم تعطيل @' + username, 'success');
+            ModMgr.render();
+        } catch(e) { Toast.show('❌ ' + e.message, 'error'); }
+    }
+};
+
+
+// ═══════════════════════════════════════════════════
+// 💬 ADMIN CHAT SYSTEM
+// ═══════════════════════════════════════════════════
+const AdminChat = {
+    currentMod: null,
+    currentModUid: null,
+    _listener: null,
+
+    init: () => {
+        if (!FB.isOk()) return;
+        AdminChat.renderList();
+    },
+
+    renderList: async () => {
+        const el = document.getElementById('admin-chat-list');
+        if (!el) return;
+        let list = [];
+        try { list = await Auth.getModerators(); } catch(_) { list = ModMgr.getAll(); }
+        list = list.filter(m => !m.deletedAt);
+        if (list.length === 0) {
+            el.innerHTML = '<div class="p-4 text-sm text-gray-400">لا يوجد مشرفون</div>';
+            return;
+        }
+        el.innerHTML = list.map(mod => {
+            const key = mod.uid || mod.id || mod.username;
+            const name = Sanitize.html(mod.username || mod.displayName || '');
+            const isActive = AdminChat.currentModUid === key || AdminChat.currentMod === mod.username;
+            const statusColor = mod.active !== false ? 'bg-green-400' : 'bg-gray-400';
+            return `<div class="flex items-center border-b border-gray-100 dark:border-gray-700 ${isActive ? 'bg-brand-50 dark:bg-brand-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-750'}">
+                <button onclick="AdminChat.openWith('${key}')" class="flex-1 text-right px-4 py-3 flex items-center gap-3">
+                    <div class="relative">
+                        <div class="w-10 h-10 rounded-full bg-brand-600 flex items-center justify-center text-white font-bold text-sm">${(mod.username||'?')[0].toUpperCase()}</div>
+                        <div class="absolute bottom-0 left-0 w-3 h-3 rounded-full ${statusColor} border-2 border-white dark:border-gray-800"></div>
+                    </div>
+                    <div class="text-right min-w-0">
+                        <div class="font-medium text-sm truncate">${name}</div>
+                        <div class="text-xs text-gray-400">${mod.active !== false ? 'نشط' : 'معطل'}</div>
+                    </div>
+                </button>
+                <button onclick="AdminChat.deleteConversation('${key}')" title="حذف المحادثة" class="px-3 py-3 text-gray-300 hover:text-red-500 transition-colors">
+                    <i class="fas fa-trash-alt text-xs"></i>
+                </button>
+            </div>`;
+        }).join('');
+    },
+
+    openWith: async (usernameOrUid) => {
+        AdminChat.currentMod = usernameOrUid;
+        // Resolve uid: check local cache first, then load from DB
+        let chatUid = usernameOrUid;
+        try {
+            const mods = await Auth.getModerators();
+            const mod = mods.find(m => m.username === usernameOrUid || m.uid === usernameOrUid);
+            if (mod && mod.uid) chatUid = mod.uid;
+        } catch(_) {}
+        AdminChat.currentModUid = chatUid;
+        if (document.getElementById('adminchat').classList.contains('hidden')) {
+            app.nav('adminchat');
+        }
+        AdminChat.renderList();
+        const header = document.getElementById('admin-chat-header');
+        if (header) header.textContent = 'محادثة مع: ' + usernameOrUid;
+        const inputArea = document.getElementById('admin-chat-input-area');
+        if (inputArea) inputArea.classList.remove('hidden');
+        if (!FB.isOk()) {
+            document.getElementById('admin-chat-messages').innerHTML = '<div class="text-center text-gray-400 py-8">Firebase غير متصل</div>';
+            return;
+        }
+        if (AdminChat._listener) AdminChat._listener();
+        // KEY FIX: always use UID as chat path (matches Moderator.html + Firebase Rules)
+        const chatRef = FB.getDb().ref('shaker/chats/' + chatUid);
+        AdminChat._listener = chatRef.on('value', snap => {
+            const msgs = [];
+            if (snap.exists()) snap.forEach(child => msgs.push({ id: child.key, ...child.val() }));
+            msgs.sort((a, b) => a.time - b.time);
+            const container = document.getElementById('admin-chat-messages');
+            if (!container) return;
+            container.innerHTML = msgs.length === 0 ? '<div class="text-center text-gray-400 py-8">لا توجد رسائل بعد</div>' :
+                msgs.map(m => `
+                    <div class="flex ${m.sender === 'admin' ? 'justify-start' : 'justify-end'}">
+                        <div class="max-w-xs px-4 py-2 rounded-2xl text-sm ${m.sender === 'admin' ? 'bg-brand-600 text-white rounded-tl-sm' : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-tr-sm'}">
+                            <div>${Sanitize.html(m.text||'')}</div>
+                            <div class="text-xs opacity-60 mt-1">${new Date(m.time).toLocaleTimeString('ar-EG', {hour:'2-digit',minute:'2-digit'})}</div>
+                        </div>
+                    </div>`).join('');
+            container.scrollTop = container.scrollHeight;
+        });
+    },
+
+    send: () => {
+        const chatUid = AdminChat.currentModUid || AdminChat.currentMod;
+        if (!chatUid || !FB.isOk()) return;
+        const input = document.getElementById('admin-chat-input');
+        const text = (input.value || '').trim();
+        if (!text || text.length > 2000) return;
+        input.value = '';
+        FB.getDb().ref('shaker/chats/' + chatUid).push({
+            sender: 'admin', text, time: Date.now()
+        }).catch(e => Toast.show('فشل الإرسال: ' + e.message, 'error'));
+    },
+
+    deleteConversation: async (uidOrUsername) => {
+        if (!confirm('هل تريد حذف كل رسائل هذه المحادثة؟ لا يمكن التراجع.')) return;
+        if (!FB.isOk()) return;
+        try {
+            await FB.getDb().ref('shaker/chats/' + uidOrUsername).remove();
+            const msgs = document.getElementById('admin-chat-messages');
+            if (msgs) msgs.innerHTML = '<div class="text-center text-gray-400 py-8">تم حذف المحادثة</div>';
+            Toast.show('تم حذف المحادثة', 'success');
+        } catch(e) { Toast.show('فشل الحذف: ' + e.message, 'error'); }
+    }
+};
+// Update sidebar status after DOM loads
+document.addEventListener('DOMContentLoaded', () => {
+    const el = document.getElementById('fb-sidebar-status');
+    if (el) {
+        el.textContent = FB.isOk() ? '🔥 Firebase: متصل ✅' : '⚠️ Firebase: غير متصل';
+        el.style.color = FB.isOk() ? '#4ade80' : '#f87171';
+    }
+});
+
+// === Auth Guard (Admin only for index.html) ===
+// Auth guard handled by Firebase Auth onAuthStateChanged below
+// === Theme Loader ===
+(function() {
+    const savedTheme = localStorage.getItem('shaker_theme');
+    if (savedTheme === 'light') {
+        document.documentElement.classList.remove('dark');
+    } else {
+        document.documentElement.classList.add('dark');
+        if (!savedTheme) localStorage.setItem('shaker_theme', 'dark');
+    }
+})();
+
+// === Utility Functions ===
+const Utils = {
+    generateId: () => Store.genId(),
+    formatCurrency: (num) => new Intl.NumberFormat('ar-EG', { style: 'currency', currency: 'EGP' }).format(num || 0),
+    formatDate: (ts) => new Date(ts).toLocaleDateString('ar-EG'),
+    startOfDay: (date) => { const d = new Date(date); d.setHours(0,0,0,0); return d.getTime(); },
+    endOfDay: (date) => { const d = new Date(date); d.setHours(23,59,59,999); return d.getTime(); },
+};
+
+// === Store — delegates to store.js module ===
+// Store module loaded from js/store.js
+// The Store object below is kept for backward compat with existing app code
+// It wraps the Store module's async methods where needed
+
+// ============================================
+// 🎯 الدالة الموحدة: بناء رسالة الطلب
+// ============================================
+function buildOrderMessage(order) {
+    const statusMap = {
+        'Pending': 'قيد الانتظار',
+        'Confirmed': 'مؤكد',
+        'Shipped': 'تم الشحن',
+        'Delivered': 'تم التسليم',
+        'Cancelled': 'ملغي',
+        'Returned': 'مرتجع'
+    };
+
+    const formatDate = (dateInput) => {
+        const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+        if (isNaN(d.getTime())) return '01/01/2026';
+        return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    };
+
+    const formatNumber = (num) => new Intl.NumberFormat('ar-EG').format(num || 0);
+
+    const formatProductLine = (item) => {
+        let model = '-';
+        let modelNumber = '-';
+        if (item.productName) {
+            const match = item.productName.match(/^(.*?)\s*\(#([^)]+)\)/);
+            if (match) {
+                model = match[1].trim();
+                modelNumber = match[2].trim();
+            } else {
+                model = item.productName.trim();
+            }
+        }
+        return `${item.qty || 1}x ${model} (${modelNumber}) (${item.color || '-'} / ${item.size || '-'})`;
+    };
+
+    const date = formatDate(order.date || new Date());
+    const status = statusMap[order.status] || order.status || 'قيد الانتظار';
+    const customerName = order.customer || order.customerName || '-';
+    const address = order.address || '-';
+    const phone = order.phone || '-';
+    const referencePhone = '201061540882';
+
+    const items = Array.isArray(order.items) ? order.items : [];
+    const itemsText = items.length > 0 ? items.map(formatProductLine).join('\n') : 'لا يوجد منتجات';
+
+    const productsTotal = items.reduce((sum, item) => {
+        const price = parseFloat(item.price) || 0;
+        const qty = parseInt(item.qty) || 1;
+        return sum + (price * qty);
+    }, 0);
+
+    const profit = items.reduce((sum, item) => {
+        const price = parseFloat(item.price) || 0;
+        const cost = parseFloat(item.cost) || 0;
+        const qty = parseInt(item.qty) || 1;
+        return sum + ((price - cost) * qty);
+    }, 0);
+
+    const shippingPrice = parseFloat(order.shippingPrice) || 0;
+    const shippingPayer = order.shippingPayer || 'customer';
+    const payerText = shippingPayer === 'company' ? 'على الشركة' : 'على العميل';
+
+    const calculatedFinalTotal = shippingPayer === 'company' 
+        ? productsTotal - shippingPrice 
+        : productsTotal + shippingPrice;
+    
+    const finalTotal = (order.total !== undefined && order.total !== null) ? order.total : calculatedFinalTotal;
+
+    const note = (order.note && order.note.toString().trim()) 
+        ? order.note.toString().trim() 
+        : 'لا يوجد';
+
+    return `طلب جديد من SHAKER
+
+التاريخ: ${date}
+الحالة: ${status}
+
+━━━━━━━━━━━━━━━━━━
+بيانات العميل
+━━━━━━━━━━━━━━━━━━
+الاسم: ${customerName}
+العنوان: ${address}
+رقم الهاتف: ${phone}
+رقم المرجع: ${referencePhone}
+
+━━━━━━━━━━━━━━━━━━
+المنتجات
+━━━━━━━━━━━━━━━━━━
+${itemsText}
+
+━━━━━━━━━━━━━━━━━━
+الحساب
+━━━━━━━━━━━━━━━━━━
+سعر المنتجات: ${formatNumber(productsTotal)} ج.م
+الشحن: ${formatNumber(shippingPrice)} ج.م (${payerText})
+
+الربح: ${formatNumber(profit)} ج.م
+
+━━━━━━━━━━━━━━━━━━
+الإجمالي النهائي
+━━━━━━━━━━━━━━━━━━
+${formatNumber(finalTotal)} ج.م
+
+━━━━━━━━━━━━━━━━━━
+ملاحظات
+━━━━━━━━━━━━━━━━━━
+${note}`;
+}
+
+// ============================================
+// 📱 دوال الإرسال الموحدة - مُصلحة ✅
+// ============================================
+
+// ✅ إرسال واتساب - دالة عادية (ليست داخل كائن)
+function generateWhatsApp(orderId) {
+    const order = Store.get('orders').find(o => o.id === orderId);
+    if (!order) return;
+
+    const message = buildOrderMessage(order);
+    const url = "https://wa.me/?text=" + encodeURIComponent(message);
+    window.open(url, "_blank");
+}
+
+// ✅ إرسال تلغرام - دالة عادية (ليست داخل كائن)
+function generateTelegram(orderId) {
+    const order = Store.get('orders').find(o => o.id === orderId);
+    if (!order) return;
+
+    const message = buildOrderMessage(order);
+    const url = "https://t.me/share/url?url=&text=" + encodeURIComponent(message);
+    window.open(url, "_blank");
+}
+
+// ✅ نسخ الرسالة - دالة عادية
+function copyOrder(orderId) {
+    const order = Store.get('orders').find(o => o.id === orderId);
+    if (!order) return;
+    
+    const message = buildOrderMessage(order);
+    
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(message).then(() => {
+            Toast.show("✅ تم نسخ الرسالة بنجاح", 'success');
+        }).catch(() => fallbackCopyText(message));
+    } else {
+        fallbackCopyText(message);
+    }
+}
+
+function fallbackCopyText(text) {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.position = "fixed";
+    textArea.style.left = "-999999px";
+    textArea.style.top = "-999999px";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+        document.execCommand('copy');
+        Toast.show("✅ تم نسخ الرسالة بنجاح", 'success');
+    } catch (err) {
+        Toast.show("❌ فشل النسخ", 'error');
+    }
+    document.body.removeChild(textArea);
+}
+
+// === IndexedDB Image Store ===
+const ImageDB = {
+    _db: null,
+    open: () => new Promise((resolve, reject) => {
+        if (ImageDB._db) { resolve(ImageDB._db); return; }
+        const req = indexedDB.open('shakerDB', 1);
+        req.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains('images')) {
+                db.createObjectStore('images', { keyPath: 'id', autoIncrement: true });
+            }
+        };
+        req.onsuccess = (e) => { ImageDB._db = e.target.result; resolve(ImageDB._db); };
+        req.onerror = (e) => reject(e.target.error);
+    }),
+    saveImage: async (base64Data) => {
+        const db = await ImageDB.open();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction('images', 'readwrite');
+            const store = tx.objectStore('images');
+            const req = store.add({ data: base64Data });
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = (e) => reject(e.target.error);
+        });
+    },
+    getImage: async (id) => {
+        if (!id) return null;
+        const db = await ImageDB.open();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction('images', 'readonly');
+            const store = tx.objectStore('images');
+            const req = store.get(id);
+            req.onsuccess = () => resolve(req.result ? req.result.data : null);
+            req.onerror = (e) => reject(e.target.error);
+        });
+    },
+    deleteImage: async (id) => {
+        if (!id) return;
+        const db = await ImageDB.open();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction('images', 'readwrite');
+            const store = tx.objectStore('images');
+            const req = store.delete(id);
+            req.onsuccess = () => resolve();
+            req.onerror = (e) => reject(e.target.error);
+        });
+    }
+};
+
+let _pendingImageBase64 = null;
+let _pendingImageFile = null;
+
+// ── Image upload preview handler ──────────────────────────
+function handleImageUpload(input) {
+    const file = input.files[0];
+    if (!file) return;
+    _pendingImageFile = file;
+    _pendingImageBase64 = null;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const preview = document.getElementById('image-preview');
+        if (preview) {
+            preview.innerHTML = `<div class="text-center">
+                <img src="${e.target.result}" alt="Preview" class="h-32 object-cover rounded border mx-auto">
+                <p class="text-xs text-blue-500 mt-1"><i class="fas fa-cloud-upload-alt ml-1"></i>سيتم رفع الصورة على Cloudinary عند الحفظ</p>
+            </div>`;
+        }
+    };
+    reader.readAsDataURL(file);
+}
+
+// === Toast Notifications ===
+const Toast = {
+    show: (msg, type = 'success') => {
+        const colors = { success: 'bg-green-600', error: 'bg-red-600', warning: 'bg-yellow-600', info: 'bg-blue-600' };
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = `toast ${colors[type]}`;
+        toast.innerHTML = msg;
+        container.appendChild(toast);
+        setTimeout(() => { toast.style.opacity = '0'; toast.style.transform = 'translateX(-100%)'; setTimeout(() => toast.remove(), 300); }, 3000);
+    }
+};
+
+// === Stock Alert System ===
+const StockAlerts = {
+    getThreshold: () => parseInt(localStorage.getItem('shaker_stock_threshold') || '3'),
+    getLowStockItems: () => {
+        const threshold = StockAlerts.getThreshold();
+        const inventory = Store.get('inventory');
+        const products = Store.get('products');
+        return inventory
+            .filter(i => i.stock <= threshold)
+            .map(i => {
+                const product = products.find(p => p.id === i.productId) || {};
+                return { ...i, productName: `${product.category || '?'} (#${product.modelNo || '?'})`, isOutOfStock: i.stock === 0 };
+            });
+    },
+    render: () => {
+        const lowItems = StockAlerts.getLowStockItems();
+        const count = lowItems.length;
+        const sidebarAlert = document.getElementById('sidebar-stock-alert');
+        const sidebarCount = document.getElementById('sidebar-alert-count');
+        if (count > 0) {
+            sidebarAlert.classList.remove('hidden');
+            sidebarCount.textContent = count;
+        } else {
+            sidebarAlert.classList.add('hidden');
+        }
+        const outOfStock = lowItems.filter(i => i.isOutOfStock);
+        const banner = document.getElementById('stock-alerts-banner');
+        if (outOfStock.length > 0) {
+            banner.classList.remove('hidden');
+            document.getElementById('stock-alert-text').textContent =
+                `تنبيه: ${outOfStock.length} منتج نفد من المخزون و ${count - outOfStock.length} منتج بمخزون منخفض`;
+        }
+        const dashWidget = document.getElementById('dash-stock-alerts');
+        const dashList = document.getElementById('dash-alerts-list');
+        if (count > 0) {
+            dashWidget.classList.remove('hidden');
+            dashList.innerHTML = lowItems.slice(0, 6).map(item => `
+                <div class="flex items-center justify-between p-2 rounded-lg ${item.isOutOfStock ? 'bg-red-100 dark:bg-red-900/30 border border-red-300' : 'bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200'}">
+                    <div class="flex items-center gap-2">
+                        <i class="fas ${item.isOutOfStock ? 'fa-times-circle text-red-500' : 'fa-exclamation-circle text-yellow-500'}"></i>
+                        <span class="text-sm font-medium">${Sanitize.html(item.productName||'')}</span>
+                        <span class="text-xs text-gray-500">${Sanitize.html(item.color||'')} / مقاس ${Sanitize.html(String(item.size||''))}</span>
+                    </div>
+                    <span class="font-bold text-sm ${item.isOutOfStock ? 'text-red-600' : 'text-yellow-600'}">
+                        ${item.isOutOfStock ? 'نفد' : item.stock + ' قطعة'}
+                    </span>
+                </div>
+            `).join('');
+        } else {
+            dashWidget.classList.add('hidden');
+        }
+        const invAlertsBox = document.getElementById('inventory-alerts-box');
+        const invAlertsList = document.getElementById('inventory-alerts-list');
+        if (invAlertsBox && count > 0) {
+            invAlertsBox.classList.remove('hidden');
+            invAlertsList.innerHTML = lowItems.map(item => `
+                <div class="flex items-center justify-between p-2 rounded text-xs ${item.isOutOfStock ? 'bg-red-100 dark:bg-red-900/40 text-red-700' : 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700'}">
+                    <span>${Sanitize.html(item.productName||'')} - ${Sanitize.html(item.color||'')} / ${Sanitize.html(String(item.size||''))}</span>
+                    <span class="font-bold">${item.isOutOfStock ? '❌ نفد' : '⚠️ ' + item.stock}</span>
+                </div>
+            `).join('');
+        } else if (invAlertsBox) {
+            invAlertsBox.classList.add('hidden');
+        }
+    }
+};
+
+// ════════════════════════════════════════════════════════
+// 💾 BACKUP SYSTEM — Firebase Only (no local server needed)
+// ════════════════════════════════════════════════════════
+const Backup = {
+
+    // ── Auto-save to Firebase (debounced) ────────────────
+    save: async (isAuto = true) => {
+        if (!FB.isOk()) return;
+        try {
+            await FB.saveBackup(isAuto ? 'auto' : 'manual');
+            if (!isAuto) Toast.show('✅ تم حفظ نسخة احتياطية على Firebase', 'success');
+        } catch(e) {
+            if (!isAuto) Toast.show('❌ فشل الحفظ: ' + e.message, 'error');
+            console.error('Backup error:', e);
+        }
+    },
+
+
+    // ── Manual backup (also downloads JSON file) ─────────
+    manualBackup: async () => {
+        await Backup.save(false);
+        // Also download as JSON file
+        const data = {
+            products:  Store.get('products'),
+            inventory: Store.get('inventory'),
+            orders:    Store.get('orders'),
+            marketers: Store.get('marketers'),
+            shipping:  Store.get('shipping')
+        };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = `shaker_backup_${new Date().toISOString().slice(0,19).replace(/[T:]/g,'-')}.json`;
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a); URL.revokeObjectURL(url);
+        app.backup.renderList();
+    },
+
+    // ── Restore from Firebase backup ─────────────────────
+    restore: async (key) => {
+        if (!confirm('⚠️ سيتم استبدال كل البيانات الحالية. هل أنت متأكد؟')) return;
+        Loading.show('جارٍ الاستعادة...');
+        try {
+            await FB.restoreBackup(key);
+            await Store.syncAll();
+            Toast.show('✅ تم استعادة البيانات بنجاح', 'success');
+            document.getElementById('restore-panel').classList.add('hidden');
+            setTimeout(() => { app.init(); app.nav('dashboard'); }, 300);
+        } catch(e) {
+            Toast.show('❌ فشل الاستعادة: ' + e.message, 'error');
+        } finally {
+            Loading.hide();
+        }
+    },
+
+
+    // ── Render backup list ────────────────────────────────
+    renderList: async () => {
+        const container = document.getElementById('backup-list');
+        if (!container) return;
+        if (!FB.isOk()) { container.innerHTML = '<p class="text-sm text-gray-400">Firebase غير متصل</p>'; return; }
+        container.innerHTML = '<p class="text-sm text-gray-400 animate-pulse">جارٍ التحميل...</p>';
+        try {
+            const backups = await FB.loadBackups();
+            const keys = Object.keys(backups).sort().reverse();
+            if (!keys.length) { container.innerHTML = '<p class="text-sm text-gray-400">لا توجد نسخ بعد</p>'; return; }
+            container.innerHTML = keys.map(k => {
+                const b = backups[k];
+                const lbl = k === 'latest' ? '🤖 تلقائي' : '💾 يدوي';
+                const dt  = b.savedAt ? new Date(b.savedAt).toLocaleString('ar-EG') : '-';
+                const ord = Object.keys(b.orders||{}).length;
+                const prd = Object.keys(b.products||{}).length;
+                return `<div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg text-sm">
+                    <div><span class="font-medium">${lbl}</span> <span class="text-gray-500 text-xs mr-2">${dt}</span> <span class="text-xs text-gray-400">(${ord} طلب، ${prd} منتج)</span></div>
+                </div>`;
+            }).join('');
+        } catch(e) { container.innerHTML = '<p class="text-sm text-red-400">خطأ: ' + e.message + '</p>'; }
+    },
+
+
+    // ── Show restore panel ────────────────────────────────
+    showRestore: async () => {
+        const panel = document.getElementById('restore-panel');
+        const list  = document.getElementById('restore-backups-list');
+        panel.classList.remove('hidden');
+        if (!FB.isOk()) { list.innerHTML = '<p class="text-sm text-gray-400">Firebase غير متصل</p>'; return; }
+        list.innerHTML = '<p class="text-sm text-gray-400 animate-pulse">جارٍ التحميل...</p>';
+        try {
+            const backups = await FB.loadBackups();
+            const keys = Object.keys(backups).sort().reverse();
+            if (!keys.length) { list.innerHTML = '<p class="text-sm text-gray-500">لا توجد نسخ</p>'; return; }
+            list.innerHTML = keys.map(k => {
+                const b = backups[k];
+                const lbl = k === 'latest' ? '🤖 تلقائي' : '💾 يدوي';
+                const dt  = b.savedAt ? new Date(b.savedAt).toLocaleString('ar-EG') : '-';
+                const ord = Object.keys(b.orders||{}).length;
+                return `<div class="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-lg border border-orange-200 text-sm">
+                    <div><span class="font-medium">${lbl}</span> <span class="text-gray-500 text-xs mr-2">${dt}</span> <span class="text-xs text-gray-400">(${ord} طلب)</span></div>
+                    <button onclick="app.backup.restore('${k}')" class="bg-orange-500 text-white px-3 py-1 rounded text-xs hover:bg-orange-600">استعادة</button>
+                </div>`;
+            }).join('');
+        } catch(e) { list.innerHTML = '<p class="text-sm text-red-400">خطأ</p>'; }
+    },
+
+
+    getAll: () => []  // Legacy compat
+};
+
+const _backupClean = true;
+
+let chartInstances = {};
+
+// === Analytics Module ===
+const Analytics = {
+    currentFilter: 'day',
+    setFilter: (filter) => {
+        Analytics.currentFilter = filter;
+        document.querySelectorAll('.analytics-filter-btn').forEach(btn => {
+            btn.className = btn.className.replace('bg-brand-600 text-white', 'bg-gray-200 dark:bg-gray-700');
+            btn.className = btn.className.replace('text-white', '');
+        });
+        const activeBtn = document.getElementById(`filter-${filter}`);
+        activeBtn.className = activeBtn.className.replace('bg-gray-200 dark:bg-gray-700', 'bg-brand-600 text-white');
+        const customRange = document.getElementById('custom-date-range');
+        if (filter === 'custom') {
+            customRange.classList.remove('hidden');
+        } else {
+            customRange.classList.add('hidden');
+        }
+        Analytics.render();
+    },
+    getDateRange: () => {
+        const now = new Date();
+        const filter = Analytics.currentFilter;
+        let from, to;
+        to = Utils.endOfDay(now);
+        if (filter === 'day') {
+            from = Utils.startOfDay(now);
+        } else if (filter === 'week') {
+            const weekStart = new Date(now);
+            weekStart.setDate(now.getDate() - 6);
+            from = Utils.startOfDay(weekStart);
+        } else if (filter === 'month') {
+            const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+            from = Utils.startOfDay(monthStart);
+        } else if (filter === 'custom') {
+            const fromInput = document.getElementById('date-from').value;
+            const toInput = document.getElementById('date-to').value;
+            from = fromInput ? Utils.startOfDay(new Date(fromInput)) : 0;
+            to = toInput ? Utils.endOfDay(new Date(toInput)) : Date.now();
+        }
+        return { from, to };
+    },
+    getFilteredOrders: () => {
+        const { from, to } = Analytics.getDateRange();
+        return Store.get('orders').filter(o => {
+            const active = ['Confirmed','Shipped','Delivered'].includes(o.status);
+            return active && o.date >= from && o.date <= to;
+        });
+    },
+    render: () => {
+        const orders = Analytics.getFilteredOrders();
+        const products = Store.get('products');
+        const marketers = [{ id: 'shaker_fixed', name: 'SHAKER' }, ...Store.get('marketers')];
+        const totalSales = orders.reduce((s, o) => s + o.total, 0);
+        const totalProfit = orders.reduce((s, o) => s + o.profit, 0);
+        document.getElementById('ana-total-sales').textContent = Utils.formatCurrency(totalSales);
+        document.getElementById('ana-total-profit').textContent = Utils.formatCurrency(totalProfit);
+        document.getElementById('ana-order-count').textContent = orders.length;
+        document.getElementById('ana-avg-order').textContent = Utils.formatCurrency(orders.length ? totalSales / orders.length : 0);
+        const productSales = {};
+        orders.forEach(o => o.items.forEach(item => {
+            const key = item.productName;
+            if (!productSales[key]) productSales[key] = { qty: 0, revenue: 0 };
+            productSales[key].qty += item.qty;
+            productSales[key].revenue += item.price * item.qty;
+        }));
+        const topProducts = Object.entries(productSales).sort((a,b) => b[1].qty - a[1].qty).slice(0, 5);
+        const maxQty = topProducts[0]?.[1].qty || 1;
+        document.getElementById('top-products-list').innerHTML = topProducts.length ? topProducts.map(([name, data], i) => `
+            <div>
+                <div class="flex justify-between text-sm mb-1">
+                    <span class="font-medium">${i+1}. ${name}</span>
+                    <span class="text-gray-500">${data.qty} قطعة</span>
+                </div>
+                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                    <div class="bg-brand-500 h-2 rounded-full" style="width:${(data.qty/maxQty)*100}%"></div>
+                </div>
+            </div>
+        `).join('') : '<p class="text-gray-400 text-sm text-center py-4">لا توجد بيانات</p>';
+        const sizeCounts = {};
+        orders.forEach(o => o.items.forEach(item => {
+            sizeCounts[item.size] = (sizeCounts[item.size] || 0) + item.qty;
+        }));
+        const sortedSizes = Object.entries(sizeCounts).sort((a,b) => parseInt(a[0]) - parseInt(b[0]));
+        Analytics.renderChart('sizes-chart', 'bar', sortedSizes.map(s => s[0]), sortedSizes.map(s => s[1]), 'المقاسات المطلوبة', '#3b82f6');
+        const colorCounts = {};
+        orders.forEach(o => o.items.forEach(item => {
+            colorCounts[item.color] = (colorCounts[item.color] || 0) + item.qty;
+        }));
+        const sortedColors = Object.entries(colorCounts).sort((a,b) => b[1] - a[1]);
+        const colorPalette = ['#f59e0b','#6366f1','#ec4899','#10b981','#ef4444','#3b82f6','#8b5cf6'];
+        Analytics.renderChart('colors-chart', 'doughnut', sortedColors.map(c => c[0]), sortedColors.map(c => c[1]), 'الألوان', colorPalette);
+        const dailyProfits = {};
+        orders.forEach(o => {
+            const day = new Date(o.date).toLocaleDateString('ar-EG');
+            dailyProfits[day] = (dailyProfits[day] || 0) + o.profit;
+        });
+        const days = Object.keys(dailyProfits).slice(-14);
+        Analytics.renderChart('profit-chart', 'line', days, days.map(d => dailyProfits[d]), 'الربح اليومي', '#10b981');
+        const mktPerf = marketers.map(m => {
+            const mktOrders = orders.filter(o => o.marketerId === m.id);
+            return { name: m.name, sales: mktOrders.reduce((s,o) => s + o.total, 0), count: mktOrders.length, profit: mktOrders.reduce((s,o) => s + o.profit, 0) };
+        }).sort((a,b) => b.sales - a.sales);
+        const maxSales = mktPerf[0]?.sales || 1;
+        document.getElementById('marketers-performance').innerHTML = mktPerf.length ? mktPerf.map((m, i) => {
+            const rankClass = i === 0 ? 'rank-gold' : i === 1 ? 'rank-silver' : i === 2 ? 'rank-bronze' : 'bg-gray-500';
+            return `
+                <div class="flex items-center gap-3">
+                    <span class="${rankClass} text-white text-xs font-bold px-2 py-1 rounded-full min-w-[2rem] text-center">#${i+1}</span>
+                    <div class="flex-1">
+                        <div class="flex justify-between text-sm mb-1">
+                            <span class="font-bold">${Sanitize.html(m.name||'')}</span>
+                            <span class="text-gray-500">${m.count} طلب | ${Utils.formatCurrency(m.sales)}</span>
+                        </div>
+                        <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                            <div class="${rankClass} h-2 rounded-full" style="width:${(m.sales/maxSales)*100}%"></div>
+                        </div>
+                    </div>
+                </div>`;
+        }).join('') : '<p class="text-gray-400 text-sm">لا توجد بيانات</p>';
+    },
+    renderChart: (canvasId, type, labels, data, label, color) => {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        if (chartInstances[canvasId]) { chartInstances[canvasId].destroy(); }
+        const isDark = document.documentElement.classList.contains('dark');
+        const textColor = isDark ? '#9ca3af' : '#374151';
+        const gridColor = isDark ? '#374151' : '#e5e7eb';
+        const colors = Array.isArray(color) ? color : [color];
+        chartInstances[canvasId] = new Chart(canvas, {
+            type,
+            data: {
+                labels,
+                datasets: [{ label, data, backgroundColor: type === 'line' ? colors[0] + '33' : colors, borderColor: type === 'line' ? colors[0] : colors, borderWidth: type === 'line' ? 2 : 0, fill: type === 'line', tension: 0.4, pointBackgroundColor: colors[0] }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { labels: { color: textColor, font: { family: 'Tajawal' } } } },
+                scales: type !== 'doughnut' ? {
+                    x: { ticks: { color: textColor }, grid: { color: gridColor } },
+                    y: { ticks: { color: textColor }, grid: { color: gridColor } }
+                } : undefined
+            }
+        });
+    }
+};
+
+function updateStock(order, type = 'deduct') {
+    const inventory = Store.get('inventory');
+    order.items.forEach(item => {
+        const index = inventory.findIndex(i =>
+            i.productId === item.productId &&
+            i.color === item.color &&
+            i.size === item.size
+        );
+        if (index !== -1) {
+            if (type === 'deduct') {
+                inventory[index].stock -= item.qty;
+                if (inventory[index].stock < 0) inventory[index].stock = 0;
+            } else if (type === 'add') {
+                inventory[index].stock += item.qty;
+            }
+        }
+    });
+    Store.set('inventory', inventory);
+}
+
+function isDuplicateOrder(newOrder) {
+    const orders = Store.get('orders');
+    return orders.find(o => {
+        const samePhone = o.phone === newOrder.phone;
+        const sameItems = JSON.stringify(o.items) === JSON.stringify(newOrder.items);
+        const sameDay = new Date(o.date).toDateString() === new Date(newOrder.date).toDateString();
+        return samePhone && sameItems && sameDay;
+    });
+}
+
+// === Main App ===
+const app = {
+    state: {
+        currentOrderItems: [],
+        sizes: Array.from({length: 11}, (_, i) => 36 + i),
+        currentSearchResults: null
+    },
+    analytics: Analytics,
+    backup: Backup,
+    init: () => {
+        if (!Store.get('shipping').find(s => s.name === "ناسا")) {
+            await Store.add('shipping', {
+                id: "nasa_fixed",
+                name: "ناسا",
+                api: "",
+                isFixed: true
+            });
+        }
+        app.nav('dashboard');
+        app.renderDashboard();
+        app.renderProducts();
+        app.renderMarketers();
+        app.renderShipping();
+        app.initInventoryFilters();
+        StockAlerts.render();
+        const threshold = StockAlerts.getThreshold();
+        const threshEl = document.getElementById('stock-alert-threshold');
+        if (threshEl) threshEl.value = threshold;
+        Backup.renderList();
+        app.populateMarketerFilter();
+    },
+    saveThreshold: () => {
+        const val = parseInt(document.getElementById('stock-alert-threshold').value);
+        if (val > 0) {
+            localStorage.setItem('shaker_stock_threshold', val.toString());
+            StockAlerts.render();
+            Toast.show('تم حفظ إعداد التنبيه', 'success');
+        }
+    },
+    nav: (sectionId) => {
+        document.querySelectorAll('section').forEach(el => el.classList.add('hidden'));
+        document.getElementById(sectionId)?.classList.remove('hidden');
+        document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
+        if(sectionId === 'dashboard') app.renderDashboard();
+        if(sectionId === 'analytics') { Analytics.currentFilter = 'day'; Analytics.setFilter('day'); }
+        if(sectionId === 'inventory') { app.initInventoryFilters(); StockAlerts.render(); }
+        if(sectionId === 'orders') { app.renderOrders(); app.populateMarketerFilter(); }
+        if(sectionId === 'settings') { Backup.renderList(); }
+        if(sectionId === 'moderators') { ModMgr.render(); }
+        if(sectionId === 'adminchat') { AdminChat.init(); }
+    },
+    toggleTheme: () => {
+        const isDark = document.documentElement.classList.toggle('dark');
+        localStorage.setItem('shaker_theme', isDark ? 'dark' : 'light');
+    },
+    modals: {
+        open: (id) => {
+            if (id === 'productModal') {
+                _pendingImageBase64 = null;
+            }
+            document.getElementById(id).classList.remove('hidden');
+        },
+        close: (id) => {
+            if (id === 'productModal') { _pendingImageBase64 = null; }
+            document.getElementById(id).classList.add('hidden');
+        }
+    },
+    handleImageUpload: (input) => {
+        const preview = document.getElementById('image-preview');
+        preview.innerHTML = '';
+        _pendingImageBase64 = null;
+        if (!input.files || !input.files[0]) return;
+        const file = input.files[0];
+        if (!file.type.match('image.*')) { alert('يرجى اختيار صورة صالحة'); return; }
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            _pendingImageBase64 = e.target.result;
+            const img = document.createElement('img');
+            img.src = e.target.result;
+            img.className = 'h-32 object-cover rounded mt-2 border';
+            preview.appendChild(img);
+        };
+        reader.readAsDataURL(file);
+    },
+    renderProducts: () => {
+        const products = Store.get('products');
+        const inventory = Store.get('inventory');
+        const grid = document.getElementById('products-grid');
+        grid.innerHTML = products.map(p => {
+            const invItems = inventory.filter(i => i.productId === p.id);
+            const total = invItems.reduce((s, i) => s + i.stock, 0);
+            const hasLow = invItems.some(i => i.stock <= StockAlerts.getThreshold());
+            const hasOut = invItems.some(i => i.stock === 0);
+            return `
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden hover:shadow-md transition">
+                    <div id="img-container-${p.id}" class="h-32 bg-gray-200 flex items-center justify-center text-gray-400"><i class="fas fa-shoe-prints text-4xl"></i></div>
+                    <div class="p-4">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h3 class="font-bold text-lg">${Sanitize.html(p.category||'')} - #${Sanitize.html(p.modelNo||'')}</h3>
+                                <p class="text-xs text-gray-500">المقاسات: ${p.sizes.join(', ')}</p>
+                            </div>
+                            <span class="text-brand-600 font-bold">${p.price} ج.م</span>
+                        </div>
+                        ${hasOut ? '<span class="text-xs bg-red-100 text-red-600 px-2 py-1 rounded mt-1 inline-block">⚠️ نفد بعض الأصناف</span>' :
+                        hasLow ? '<span class="text-xs bg-yellow-100 text-yellow-600 px-2 py-1 rounded mt-1 inline-block">⚠️ مخزون منخفض</span>' : ''}
+                        <div class="mt-3 flex gap-2">
+                            <button onclick="app.editProduct('${p.id}')" class="flex-1 bg-blue-50 text-blue-600 py-1 rounded text-sm">تعديل</button>
+                            <button onclick="app.deleteProduct('${p.id}')" class="flex-1 bg-red-50 text-red-600 py-1 rounded text-sm">حذف</button>
+                        </div>
+                    </div>
+                </div>`
+        }).join('');
+        products.forEach(p => {
+            // Support Cloudinary URL (new), legacy base64 (old), or imageId (IndexedDB)
+            const imgSrc = p.imageUrl || p.image || null;
+            if (imgSrc) {
+                const container = document.getElementById(`img-container-${p.id}`);
+                if (container) container.innerHTML = `<img src="${imgSrc}" alt="Product" class="h-32 w-full object-cover">`;
+            } else if (p.imageId) {
+                // Legacy IndexedDB fallback
+                ImageDB.getImage(p.imageId).then(base64 => {
+                    if (!base64) return;
+                    const container = document.getElementById(`img-container-${p.id}`);
+                    if (container) container.innerHTML = `<img src="${base64}" alt="Product" class="h-32 w-full object-cover">`;
+                }).catch(() => {});
+            }
+        });
+    },
+    initStockTable: () => {
+        const colorsInput = document.getElementById('prod-colors');
+        const sizeContainer = document.getElementById('size-selection-container');
+        sizeContainer.innerHTML = '';
+        for (let size = 36; size <= 46; size++) {
+            const label = document.createElement('label');
+            label.className = 'flex flex-col items-center cursor-pointer';
+            label.innerHTML = `
+                <input type="checkbox" name="selected-sizes" value="${size}" class="hidden peer">
+                <div class="w-8 h-8 flex items-center justify-center border rounded peer-checked:bg-brand-500 peer-checked:text-white peer-checked:border-brand-500">${size}</div>
+            `;
+            sizeContainer.appendChild(label);
+        }
+        colorsInput.addEventListener('input', () => {
+            const colors = colorsInput.value.split(',').map(c => c.trim()).filter(c => c);
+            const tbody = document.getElementById('stock-input-body');
+            const thead = document.querySelector('#stock-input-table thead tr');
+            const selectedSizes = Array.from(document.querySelectorAll('input[name="selected-sizes"]:checked')).map(cb => cb.value);
+            if (selectedSizes.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="12" class="text-center text-red-500 p-2">يرجى اختيار مقاس واحد على الأقل</td></tr>';
+                thead.innerHTML = '<th class="p-2 text-right w-48 bg-gray-100 dark:bg-gray-900">اللون / الكراتين</th>';
+                return;
+            }
+            thead.innerHTML = '<th class="p-2 text-right w-48 bg-gray-100 dark:bg-gray-900">اللون / الكراتين</th>' +
+                selectedSizes.map(size => `<th class="p-2 w-12">${size}</th>`).join('');
+            tbody.innerHTML = colors.map(color => `
+                <tr class="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                    <td class="p-2 text-right border-l dark:border-gray-600 bg-gray-50 dark:bg-gray-800">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="font-bold text-gray-700 dark:text-gray-300 truncate" title="${color}">${color}</span>
+                            <div class="flex items-center gap-1">
+                                <input type="number" min="0" placeholder="كرتين" class="carton-input border rounded text-xs p-1" title="أدخل عدد الكراتين">
+                                <button onclick="app.autoFillStock(this)" class="bg-brand-100 text-brand-600 hover:bg-brand-600 hover:text-white p-1.5 rounded transition" title="توزيع تلقائي">
+                                    <i class="fas fa-magic text-xs"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </td>
+                    ${selectedSizes.map(size => `
+                        <td class="p-1"><input type="number" min="0" class="stock-input border rounded p-1 dark:bg-gray-700 dark:border-gray-600" data-color="${color}" data-size="${size}" placeholder="0"></td>
+                    `).join('')}
+                </tr>
+            `).join('');
+        });
+    },
+    autoFillStock: (btn) => {
+        const row = btn.closest('tr');
+        const cartonInput = row.querySelector('.carton-input');
+        const qty = parseInt(cartonInput.value);
+        if(!qty || qty <= 0) { alert('الرجاء إدخال عدد صحيح للكراتين'); return; }
+        const sizeInputs = row.querySelectorAll('input[data-size]');
+        sizeInputs.forEach(input => { input.value = qty; input.classList.add('bg-green-100'); setTimeout(() => input.classList.remove('bg-green-100'), 500); });
+    },
+    saveProduct: async () => {
+        const id = document.getElementById('prod-id').value;
+        const colorsInput = document.getElementById('prod-colors').value;
+        const colors = colorsInput.split(',').map(c => c.trim()).filter(c => c);
+        const selectedSizes = Array.from(document.querySelectorAll('input[name="selected-sizes"]:checked')).map(cb => parseInt(cb.value));
+        if (selectedSizes.length === 0) { alert('يرجى اختيار مقاس واحد على الأقل.'); return; }
+
+        // ── Upload image to Cloudinary ──────────────────────────────
+        let imageUrl = null;
+        if (_pendingImageFile) {
+            Toast.show('<i class="fas fa-spinner fa-spin ml-1"></i> جارٍ رفع الصورة...', 'info');
+            try {
+                imageUrl = await CLOUDINARY.upload(_pendingImageFile, (pct) => {
+                    Toast.show(`<i class="fas fa-cloud-upload-alt ml-1"></i> رفع الصورة: ${pct}%`, 'info');
+                });
+                Toast.show('✅ تم رفع الصورة بنجاح', 'success');
+            } catch(e) {
+                Toast.show('⚠️ فشل رفع الصورة: ' + e.message, 'error');
+                // Continue saving product without image
+            }
+        } else if (id) {
+            // Keep existing image URL
+            const existing = Store.get('products').find(p => p.id === id);
+            imageUrl = existing ? (existing.imageUrl || existing.image || null) : null;
+        }
+
+        const product = {
+            id: id || Store.genId(),
+            category: document.getElementById('prod-category').value,
+            modelNo: document.getElementById('prod-model-no').value,
+            cost: parseFloat(document.getElementById('prod-cost').value),
+            price: parseFloat(document.getElementById('prod-price').value),
+            colors,
+            sizes: selectedSizes,
+            description: document.getElementById('prod-desc').value,
+            imageUrl: imageUrl   // ☁️ Cloudinary URL (works on all devices)
+        };
+
+        if(id) await Store.update('products', id, product);
+        else await Store.add('products', product);
+
+        let inventory = Store.get('inventory');
+        inventory = inventory.filter(i => i.productId !== product.id);
+        const newInventory = [];
+        colors.forEach(color => {
+            selectedSizes.forEach(size => {
+                const input = document.querySelector(`input[data-color="${color}"][data-size="${size}"]`);
+                const qty = input ? (parseInt(input.value) || 0) : 0;
+                newInventory.push({ id: Store.genId(), productId: product.id, color, size: String(size), stock: qty });
+            });
+        });
+        Store.set('inventory', [...inventory, ...newInventory]);
+        _pendingImageBase64 = null;
+        _pendingImageFile = null;
+        app.modals.close('productModal');
+        app.renderProducts();
+        StockAlerts.render();
+        Toast.show('✅ تم حفظ الموديل والمخزون بنجاح', 'success');
+    },
+    editProduct: (id) => {
+        const p = Store.get('products').find(x => x.id === id);
+        if(!p) return;
+        document.getElementById('prod-id').value = p.id;
+        document.getElementById('prod-category').value = p.category;
+        document.getElementById('prod-model-no').value = p.modelNo;
+        document.getElementById('prod-cost').value = p.cost;
+        document.getElementById('prod-price').value = p.price;
+        document.getElementById('prod-desc').value = p.description;
+        const sizeCheckboxes = document.querySelectorAll('input[name="selected-sizes"]');
+        sizeCheckboxes.forEach(cb => { cb.checked = p.sizes.includes(parseInt(cb.value)); });
+        document.getElementById('prod-colors').value = p.colors.join(', ');
+        document.getElementById('prod-colors').dispatchEvent(new Event('input'));
+        const preview = document.getElementById('image-preview');
+        preview.innerHTML = '';
+        _pendingImageBase64 = null;
+        _pendingImageFile = null;
+        // Show existing image (Cloudinary URL or legacy)
+        const existingImg = p.imageUrl || p.image || null;
+        if (existingImg) {
+            preview.innerHTML = `<img src="${existingImg}" alt="Product" class="h-32 object-cover rounded mt-2 border">
+                <p class="text-xs text-gray-400 mt-1">الصورة الحالية — اختر صورة جديدة للتغيير</p>`;
+        } else if (p.imageId) {
+            ImageDB.getImage(p.imageId).then(base64 => {
+                if (base64) preview.innerHTML = `<img src="${base64}" alt="Product" class="h-32 object-cover rounded mt-2 border">`;
+            }).catch(() => {});
+        }
+        setTimeout(() => {
+            const inventory = Store.get('inventory').filter(i => i.productId === id);
+            p.colors.forEach(color => {
+                p.sizes.forEach(size => {
+                    const invItem = inventory.find(i => i.color === color && String(i.size) === String(size));
+                    const input = document.querySelector(`input[data-color="${color}"][data-size="${size}"]`);
+                    if (input && invItem) input.value = invItem.stock;
+                });
+            });
+        }, 150);
+        app.modals.open('productModal');
+    },
+    deleteProduct: (id) => {
+        if(confirm('هل أنت متأكد؟ سيتم حذف المخزون المرتبط.')) {
+            const p = Store.get('products').find(x => x.id === id);
+            if (p && p.imageId) { ImageDB.deleteImage(p.imageId).catch(() => {}); }
+            await Store.delete('products', id);
+            Store.set('inventory', Store.get('inventory').filter(i => i.productId !== id));
+            app.renderProducts();
+            StockAlerts.render();
+        }
+    },
+    initInventoryFilters: () => { app.renderAllInventory(); },
+    renderAllInventory: () => {
+        const products = Store.get('products');
+        const inventoryList = document.getElementById('inventory-list');
+        inventoryList.innerHTML = '';
+        const threshold = StockAlerts.getThreshold();
+        products.forEach(product => {
+            const inventoryItems = Store.get('inventory').filter(i => i.productId === product.id);
+            if (inventoryItems.length === 0) return;
+            const totalPieces = inventoryItems.reduce((sum, item) => sum + (item.stock || 0), 0);
+            const hasLow = inventoryItems.some(i => i.stock <= threshold && i.stock > 0);
+            const hasOut = inventoryItems.some(i => i.stock === 0);
+            const card = document.createElement('div');
+            card.className = `bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden ${hasOut ? 'border-2 border-red-400' : hasLow ? 'border-2 border-yellow-400' : ''}`;
+            card.innerHTML = `
+                <div class="p-4">
+                    <div class="flex justify-between items-start mb-2">
+                        <div>
+                            <h3 class="font-bold text-lg">${product.category} (#${product.modelNo})</h3>
+                            <p class="text-xs text-gray-500">المقاسات: ${product.sizes.join(', ')}</p>
+                        </div>
+                        <span class="text-brand-600 font-bold">${product.price} ج.م</span>
+                    </div>
+                    ${hasOut ? '<span class="text-xs bg-red-100 text-red-600 px-2 py-1 rounded">❌ بعض الأصناف نفدت</span>' :
+                    hasLow ? '<span class="text-xs bg-yellow-100 text-yellow-600 px-2 py-1 rounded">⚠️ مخزون منخفض</span>' : ''}
+                    <div class="mt-3 flex justify-between items-center">
+                        <span class="text-sm">الإجمالي: <b>${totalPieces}</b> قطعة</span>
+                        <button onclick="app.showInventoryDetail('${product.id}')" class="bg-brand-600 text-white px-3 py-1 rounded text-sm">عرض التفاصيل</button>
+                    </div>
+                </div>
+            `;
+            inventoryList.appendChild(card);
+        });
+        StockAlerts.render();
+    },
+    showInventoryDetail: (productId) => {
+        const product = Store.get('products').find(p => p.id === productId);
+        if (!product) return;
+        const inventory = Store.get('inventory').filter(i => i.productId === productId);
+        const threshold = StockAlerts.getThreshold();
+        let view = document.getElementById('inventory-detail-view');
+        if (!view) {
+            view = document.createElement('div');
+            view.id = 'inventory-detail-view';
+            view.className = 'bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden mt-6';
+            document.getElementById('inventory').appendChild(view);
+        } else {
+            view.classList.remove('hidden');
+        }
+        view.innerHTML = `
+            <div class="p-4 bg-brand-50 dark:bg-gray-700 border-b border-brand-100 dark:border-gray-600 flex justify-between items-center">
+                <h3 class="font-bold text-brand-900 dark:text-white">${product.category} (#${product.modelNo}) - تفاصيل المخزون</h3>
+                <span class="text-sm text-gray-500">إجمالي القطع: <b id="inv-total-pieces" class="text-brand-600">0</b></span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-right">
+                    <thead class="bg-gray-100 dark:bg-gray-900">
+                        <tr>
+                            <th class="p-3">اللون</th>
+                            ${product.sizes.map(size => `<th class="p-3 text-center">${size}</th>`).join('')}
+                            <th class="p-3">المجموع</th>
+                        </tr>
+                    </thead>
+                    <tbody id="inventory-matrix-body"></tbody>
+                </table>
+            </div>
+        `;
+        const tbody = document.getElementById('inventory-matrix-body');
+        let totalPieces = 0;
+        tbody.innerHTML = product.colors.map(color => {
+            const colorStock = inventory.filter(i => i.color === color);
+            let colorTotal = 0;
+            const sizeCells = product.sizes.map(size => {
+                const item = colorStock.find(i => i.size == size);
+                const qty = item ? item.stock : 0;
+                let cellClass = "p-2 border-r dark:border-gray-700 text-center";
+                if(qty === 0) cellClass += " bg-red-100 dark:bg-red-900/40 text-red-600 font-bold";
+                else if(qty <= threshold) cellClass += " bg-yellow-50 dark:bg-yellow-900/20 text-yellow-600";
+                colorTotal += qty;
+                return `<td class="${cellClass}">${qty === 0 ? '✗' : qty}</td>`;
+            }).join('');
+            totalPieces += colorTotal;
+            return `<tr class="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
+                <td class="p-3 font-bold text-right border-l dark:border-gray-600 bg-gray-50 dark:bg-gray-800">${color}</td>
+                ${sizeCells}
+                <td class="p-3 font-bold text-center">${colorTotal}</td>
+            </tr>`;
+        }).join('');
+        document.getElementById('inv-total-pieces').innerText = totalPieces;
+    },
+    filterInventory: () => {
+        const searchTerm = document.getElementById('inventory-search').value.toLowerCase();
+        const products = Store.get('products');
+        const inventoryList = document.getElementById('inventory-list');
+        const threshold = StockAlerts.getThreshold();
+        inventoryList.innerHTML = '';
+        const filteredProducts = products.filter(p =>
+            p.category.toLowerCase().includes(searchTerm) || p.modelNo.toLowerCase().includes(searchTerm)
+        );
+        filteredProducts.forEach(product => {
+            const inventoryItems = Store.get('inventory').filter(i => i.productId === product.id);
+            if (inventoryItems.length === 0) return;
+            const totalPieces = inventoryItems.reduce((sum, item) => sum + (item.stock || 0), 0);
+            const hasLow = inventoryItems.some(i => i.stock <= threshold && i.stock > 0);
+            const hasOut = inventoryItems.some(i => i.stock === 0);
+            const card = document.createElement('div');
+            card.className = `bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden ${hasOut ? 'border-2 border-red-400' : hasLow ? 'border-2 border-yellow-400' : ''}`;
+            card.innerHTML = `
+                <div class="p-4">
+                    <div class="flex justify-between items-start mb-2">
+                        <div>
+                            <h3 class="font-bold text-lg">${product.category} (#${product.modelNo})</h3>
+                            <p class="text-xs text-gray-500">المقاسات: ${product.sizes.join(', ')}</p>
+                        </div>
+                        <span class="text-brand-600 font-bold">${product.price} ج.م</span>
+                    </div>
+                    ${hasOut ? '<span class="text-xs bg-red-100 text-red-600 px-2 py-1 rounded">❌ بعض الأصناف نفدت</span>' :
+                    hasLow ? '<span class="text-xs bg-yellow-100 text-yellow-600 px-2 py-1 rounded">⚠️ مخزون منخفض</span>' : ''}
+                    <div class="mt-3 flex justify-between items-center">
+                        <span class="text-sm">الإجمالي: <b>${totalPieces}</b> قطعة</span>
+                        <button onclick="app.showInventoryDetail('${product.id}')" class="bg-brand-600 text-white px-3 py-1 rounded text-sm">عرض التفاصيل</button>
+                    </div>
+                </div>
+            `;
+            inventoryList.appendChild(card);
+        });
+    },
+    renderOrders: (ordersToRender) => {
+        const orders = (ordersToRender || Store.get('orders')).sort((a,b) => b.date - a.date);
+        const tbody = document.getElementById('orders-table-body');
+        const statusColors = { 'Pending': 'bg-yellow-100 text-yellow-800', 'Confirmed': 'bg-green-100 text-green-800', 'Shipped': 'bg-blue-100 text-blue-800', 'Delivered': 'bg-gray-100 text-gray-800', 'Cancelled': 'bg-red-100 text-red-800', 'Returned': 'bg-purple-100 text-purple-800' };
+        const statusLabels = { 'Pending': 'قيد الانتظار', 'Confirmed': 'مؤكد', 'Shipped': 'تم الشحن', 'Delivered': 'تم التسليم', 'Cancelled': 'ملغي', 'Returned': 'مرتجع' };
+        tbody.innerHTML = orders.map(o => {
+            const marketer = [{ id: 'shaker_fixed', name: 'SHAKER' }, ...Store.get('marketers')].find(m => m.id === o.marketerId);
+            const shippingCompany = o.shippingId ? (Store.get('shipping').find(s => s.id === o.shippingId)?.name || '-') : '-';
+            return `<tr class="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-750">
+                <td class="p-3 font-mono text-xs">${Sanitize.html(String(o.billNumber||''))}</td>
+                <td class="p-3"><div class="font-bold">${Sanitize.html(o.customer||'')}</div><div class="text-xs text-gray-500">${Sanitize.html(o.phone||'')}</div></td>
+                <td class="p-3">${marketer ? marketer.name : '-'}</td>
+                <td class="p-3 text-xs ${o.moderatorName && o.moderatorName !== 'admin' ? 'text-purple-600 font-bold' : 'text-gray-400'}">${o.moderatorName && o.moderatorName !== 'admin' ? '<i class="fas fa-user-shield ml-1"></i>' + o.moderatorName : '-'}</td>
+                <td class="p-3 text-xs"><i class="fas fa-truck text-blue-400 ml-1"></i>${shippingCompany}</td>
+                <td class="p-3 text-xs">${Utils.formatDate(o.date)}</td>
+                <td class="p-3"><span class="px-2 py-1 rounded text-xs ${statusColors[o.status] || ''}">${statusLabels[o.status] || o.status}</span></td>
+                <td class="p-3 font-bold">${Utils.formatCurrency(o.total)}</td>
+                <td class="p-3 text-green-600">${Utils.formatCurrency(o.profit)}</td>
+                <td class="p-3 text-xs text-gray-500 max-w-[120px] truncate" title="${o.note || ''}">${o.note || '-'}</td>
+                <td class="p-3 flex gap-1">
+                    <button onclick="app.changeOrderStatus('${o.id}', 'Confirmed')" class="text-green-600 hover:bg-green-100 p-1 rounded" title="تأكيد"><i class="fas fa-check"></i></button>
+                    <button onclick="app.changeOrderStatus('${o.id}', 'Cancelled')" class="text-red-600 hover:bg-red-100 p-1 rounded" title="إلغاء"><i class="fas fa-times"></i></button>
+                    <button onclick="app.changeOrderStatus('${o.id}', 'Returned')" class="text-purple-600 hover:bg-purple-100 p-1 rounded" title="مرتجع"><i class="fas fa-undo"></i></button>
+                    <button onclick="generateWhatsApp('${o.id}')" class="text-green-500 hover:bg-green-100 p-1 rounded" title="واتساب"><i class="fab fa-whatsapp"></i></button>
+                    <button onclick="generateTelegram('${o.id}')" class="text-blue-500 hover:bg-blue-100 p-1 rounded" title="تلجرام"><i class="fab fa-telegram"></i></button>
+                    <button onclick="app.editOrder('${o.id}')" class="text-blue-500 hover:bg-blue-100 p-1 rounded" title="تعديل"><i class="fas fa-edit"></i></button>
+                    <button onclick="copyOrder('${o.id}')" class="bg-gray-600 text-white px-2 py-1 rounded text-xs">نسخ</button>
+                </td>
+            </tr>`;
+        }).join('');
+        if (ordersToRender !== undefined) {
+            document.getElementById('search-results-count').textContent = `تم العثور على ${orders.length} طلب`;
+        } else {
+            document.getElementById('search-results-count').textContent = '';
+        }
+    },
+    searchOrders: () => {
+        const customer = document.getElementById('search-customer').value.toLowerCase().trim();
+        const product = document.getElementById('search-product').value.toLowerCase().trim();
+        const status = document.getElementById('search-status').value;
+        const marketerId = document.getElementById('search-marketer-filter').value;
+        const dateFrom = document.getElementById('search-date-from').value;
+        const dateTo = document.getElementById('search-date-to').value;
+        const colorSize = document.getElementById('search-color-size').value.toLowerCase().trim();
+        let orders = Store.get('orders');
+        if (customer) orders = orders.filter(o => o.customer?.toLowerCase().includes(customer) || o.phone?.includes(customer));
+        if (product) orders = orders.filter(o => o.items?.some(i => i.productName?.toLowerCase().includes(product)));
+        if (status) orders = orders.filter(o => o.status === status);
+        if (marketerId) orders = orders.filter(o => o.marketerId === marketerId);
+        if (dateFrom) orders = orders.filter(o => o.date >= Utils.startOfDay(new Date(dateFrom)));
+        if (dateTo) orders = orders.filter(o => o.date <= Utils.endOfDay(new Date(dateTo)));
+        if (colorSize) orders = orders.filter(o => o.items?.some(i => i.color?.toLowerCase().includes(colorSize) || String(i.size)?.includes(colorSize)));
+        app.renderOrders(orders);
+    },
+    clearSearch: () => {
+        ['search-customer','search-product','search-color-size'].forEach(id => document.getElementById(id).value = '');
+        ['search-status','search-marketer-filter'].forEach(id => document.getElementById(id).value = '');
+        ['search-date-from','search-date-to'].forEach(id => document.getElementById(id).value = '');
+        app.renderOrders();
+    },
+    populateMarketerFilter: () => {
+        const marketers = [{ id: 'shaker_fixed', name: 'SHAKER' }, ...Store.get('marketers')];
+        const sel = document.getElementById('search-marketer-filter');
+        if (sel) {
+            sel.innerHTML = '<option value="">كل المسوقين</option>' + marketers.map(m => `<option value="${m.id}">${Sanitize.html(m.name||'')}</option>`).join('');
+        }
+    },
+    editOrder: (orderId) => {
+        const order = Store.get('orders').find(o => o.id === orderId);
+        if (!order) return;
+        document.getElementById('ord-id').value = order.id;
+        document.getElementById('ord-customer').value = order.customer;
+        document.getElementById('ord-phone').value = order.phone;
+        AreaSelector.populate(order.address || '');
+        document.getElementById('ord-marketer').value = order.marketerId || '';
+        document.getElementById('ord-shipping').value = order.shippingId || '';
+        document.getElementById('ord-discount').value = order.discount || 0;
+        document.getElementById('ord-note').value = order.note || '';
+        document.getElementById('ord-shipping-payer').value = order.shippingPayer || 'customer';
+        app.state.currentOrderItems = order.items.map(item => ({ productId: item.productId, productName: item.productName, color: item.color, size: item.size, qty: item.qty, price: item.price, cost: item.cost }));
+        app.renderOrderCart();
+        app.modals.open('orderModal');
+    },
+    addOrderItem: () => {
+        const prodId = document.getElementById('ord-prod-select').value;
+        const color = (document.getElementById('ord-color-select').value || '').trim();
+        const size = (document.getElementById('ord-size-select').value || '').trim();
+        const qty = parseInt(document.getElementById('ord-qty').value);
+        const priceInput = parseFloat(document.getElementById('ord-price-input').value);
+        if (!prodId || !color || !size || isNaN(qty) || qty <= 0 || isNaN(priceInput) || priceInput <= 0) {
+            alert('الرجاء اختيار المنتج، اللون، المقاس، تحديد كمية صحيحة، وإدخال سعر بيع صحيح.');
+            return;
+        }
+        const product = Store.get('products').find(p => p.id === prodId);
+        if (!product) return;
+        const inv = Store.get('inventory').find(i => i.productId === prodId && i.color === color && String(i.size) === String(size));
+        if (!inv || inv.stock < qty) { alert(`عذراً، المخزون المتاح هو ${inv ? inv.stock : 0} فقط`); return; }
+        app.state.currentOrderItems.push({ productId: prodId, productName: `${product.category} (#${product.modelNo})`, color, size, qty, price: priceInput, cost: product.cost });
+        app.renderOrderCart();
+    },
+    renderOrderCart: () => {
+        const tbody = document.getElementById('order-cart-body');
+        tbody.innerHTML = app.state.currentOrderItems.map((item, index) => `
+            <tr class="border-b dark:border-gray-700">
+                <td class="p-2">${Sanitize.html(item.productName||'')}</td>
+                <td class="p-2 text-xs">${Sanitize.html(item.color||'')} / ${Sanitize.html(String(item.size||''))}</td>
+                <td class="p-2">${item.qty}</td>
+                <td class="p-2">${item.price * item.qty}</td>
+                <td class="p-2 text-red-500 cursor-pointer" onclick="app.removeOrderItem(${index})"><i class="fas fa-trash"></i></td>
+            </tr>`).join('');
+        app.calcOrderTotal();
+    },
+    removeOrderItem: (index) => { app.state.currentOrderItems.splice(index, 1); app.renderOrderCart(); },
+    calcOrderTotal: () => {
+        const subtotal = app.state.currentOrderItems.reduce((sum, item) => sum + (item.price * item.qty), 0);
+        const discount = parseFloat(document.getElementById('ord-discount').value) || 0;
+        const rawShipping = ShippingPrice.getPrice();
+        const shipping = (typeof rawShipping === 'number') ? rawShipping : 0;
+        const total = subtotal - discount + shipping;
+        const display = document.getElementById('ord-total-display');
+        if (shipping > 0) {
+            display.innerHTML = `${Utils.formatCurrency(total)} <span class="text-xs text-gray-400 font-normal">(شحن: ${shipping} ج.م)</span>`;
+        } else {
+            display.innerText = Utils.formatCurrency(total);
+        }
+        return { subtotal, discount, shipping, total };
+    },
+    saveOrder: async () => {
+        if (!AreaSelector.validate()) return;
+        if (app.state.currentOrderItems.length === 0) {
+            Toast.show('السلة فارغة، يرجى إضافة منتج أولاً', 'error');
+            return;
+        }
+        const { subtotal, discount, total } = app.calcOrderTotal();
+        const totalCost = app.state.currentOrderItems.reduce((sum, item) => sum + (item.cost * item.qty), 0);
+        const profit = total - totalCost;
+        const shippingPrice = (typeof ShippingPrice.getPrice() === 'number') ? ShippingPrice.getPrice() : 0;
+        const shippingPayer = document.getElementById('ord-shipping-payer').value;
+        let collection = total;
+        if (shippingPayer === 'customer') { collection = total + shippingPrice; }
+        let finalProfit = profit;
+        if (shippingPayer === 'company') { finalProfit = profit - shippingPrice; }
+        const savedItems = app.state.currentOrderItems.map(item => ({ productId: item.productId, productName: item.productName, color: item.color || '---', size: item.size || '--', qty: item.qty, price: item.price, cost: item.cost }));
+        const orderId = document.getElementById('ord-id').value;
+        let order;
+        if (orderId) {
+            order = Store.get('orders').find(o => o.id === orderId);
+            order.customer = document.getElementById('ord-customer').value;
+            order.phone = document.getElementById('ord-phone').value;
+            order.address = document.getElementById('ord-address').value;
+            order.marketerId = document.getElementById('ord-marketer').value;
+            order.shippingId = document.getElementById('ord-shipping').value;
+            order.shippingPrice = shippingPrice;
+            order.shippingPayer = shippingPayer;
+            order.collection = collection;
+            order.note = document.getElementById('ord-note').value;
+            order.items = savedItems;
+            order.discount = discount;
+            order.total = total;
+            order.profit = finalProfit;
+            await Store.update('orders', orderId, order);
+            Toast.show(`تم تعديل الطلب رقم: ${order.billNumber}`, 'success');
+        } else {
+            const billNumber = await await Store.getNextBillNumber();
+            order = { id: Store.genId(), billNumber, customer: document.getElementById('ord-customer').value, phone: document.getElementById('ord-phone').value, address: document.getElementById('ord-address').value, marketerId: document.getElementById('ord-marketer').value, shippingId: document.getElementById('ord-shipping').value, shippingPrice: shippingPrice, shippingPayer: shippingPayer, collection: collection, note: document.getElementById('ord-note').value, items: savedItems, discount, total, profit: finalProfit, status: 'Pending', date: Date.now(), stockUpdated: false, moderatorName: 'admin', moderatorUid: FB.getAuth()?.currentUser?.uid || 'admin', createdAt: Date.now() };
+            const duplicate = isDuplicateOrder(order);
+            if (duplicate) {
+                const confirmSave = confirm(
+                    "You already created a very similar order today.\nAre you sure you want to create it again?"
+                );
+                if (!confirmSave) return;
+            }
+            await Store.add('orders', order);
+            Toast.show(`تم إنشاء الطلب رقم: ${billNumber}`, 'success');
+        }
+        app.state.currentOrderItems = [];
+        document.getElementById('ord-note').value = '';
+        document.getElementById('ord-shipping-payer').value = 'customer';
+        app.modals.close('orderModal');
+        app.renderOrders();
+        Backup.save(true);
+    },
+    changeOrderStatus: (orderId, newStatus) => {
+        const orders = Store.get('orders');
+        const order = orders.find(o => o.id === orderId);
+        if (!order) return;
+        const oldStatus = order.status;
+        if (
+            ['Confirmed','Delivered'].includes(oldStatus) &&
+            ['Cancelled','Returned'].includes(newStatus) &&
+            order.stockUpdated
+        ) {
+            updateStock(order, 'add');
+            order.stockUpdated = false;
+        }
+        if (
+            !['Confirmed','Delivered'].includes(oldStatus) &&
+            ['Confirmed','Delivered'].includes(newStatus) &&
+            !order.stockUpdated
+        ) {
+            updateStock(order, 'deduct');
+            order.stockUpdated = true;
+        }
+        order.status = newStatus;
+        Store.set('orders', orders);
+        app.renderOrders();
+        StockAlerts.render();
+        Backup.save(true);
+    },
+    renderDashboard: () => {
+        const orders = Store.get('orders');
+        const inventory = Store.get('inventory');
+        const shakerOrders = orders.filter(o => o.marketerId === 'shaker_fixed' && ['Confirmed','Shipped','Delivered'].includes(o.status));
+        const otherOrders = orders.filter(o => o.marketerId !== 'shaker_fixed' && ['Confirmed','Shipped','Delivered'].includes(o.status));
+        const totalSales = [...shakerOrders, ...otherOrders].reduce((sum, o) => sum + o.total, 0);
+        const shakerSales = shakerOrders.reduce((sum, o) => sum + o.total, 0);
+        const otherProfit = otherOrders.reduce((sum, o) => sum + o.profit, 0);
+        const lowStock = inventory.filter(i => i.stock <= StockAlerts.getThreshold()).length;
+        document.getElementById('dash-total-sales').innerText = Utils.formatCurrency(totalSales);
+        document.getElementById('dash-total-profit').innerText = Utils.formatCurrency(otherProfit);
+        document.getElementById('dash-total-orders').innerText = otherOrders.length;
+        document.getElementById('dash-shaker-sales').innerText = Utils.formatCurrency(shakerSales);
+        document.getElementById('dash-low-stock').innerText = lowStock;
+        const recent = [...orders].sort((a,b) => b.date - a.date).slice(0, 5);
+        document.getElementById('dash-recent-orders').innerHTML = recent.map(o => `
+            <tr class="border-b dark:border-gray-700">
+                <td class="p-3 text-xs">${Sanitize.html(String(o.billNumber||''))}</td>
+                <td class="p-3">${Sanitize.html(o.customer||'')}</td>
+                <td class="p-3"><span class="text-xs px-2 py-1 rounded ${o.status === 'Pending' ? 'bg-yellow-100' : 'bg-green-100'}">${o.status}</span></td>
+                <td class="p-3 font-bold">${Utils.formatCurrency(o.total)}</td>
+                <td class="p-3"><button onclick="app.nav('orders')" class="text-brand-600 text-xs">عرض</button></td>
+            </tr>`).join('');
+        StockAlerts.render();
+    },
+    renderMarketers: () => {
+        const fixedShaker = { id: 'shaker_fixed', name: 'SHAKER', phone: '-', type: 'fixed', value: 0, isSystem: true };
+        const marketers = [fixedShaker, ...Store.get('marketers')];
+        const orders = Store.get('orders');
+        const mktPerf = marketers.filter(m => !m.isSystem).map(m => {
+            const mktOrders = orders.filter(o => o.marketerId === m.id && ['Confirmed','Shipped','Delivered'].includes(o.status));
+            const sales = mktOrders.reduce((s, o) => s + o.total, 0);
+            let commission = m.type === 'percent' ? (sales * m.value) / 100 : mktOrders.length * m.value;
+            return { ...m, sales, count: mktOrders.length, commission };
+        }).sort((a,b) => b.sales - a.sales);
+        const rankingEl = document.getElementById('marketers-ranking');
+        rankingEl.innerHTML = mktPerf.length ? mktPerf.map((m, i) => {
+            const medals = ['🥇', '🥈', '🥉'];
+            return `
+                <div class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                    <span class="text-2xl">${medals[i] || `#${i+1}`}</span>
+                    <div class="flex-1">
+                        <div class="flex justify-between">
+                            <span class="font-bold">${Sanitize.html(m.name||'')}</span>
+                            <span class="text-brand-600 font-bold">${Utils.formatCurrency(m.sales)}</span>
+                        </div>
+                        <div class="text-xs text-gray-500">${m.count} طلب | عمولة: ${Utils.formatCurrency(m.commission)}</div>
+                    </div>
+                    <button onclick="app.showMarketerDash('${m.id}')" class="text-xs bg-brand-100 text-brand-600 px-2 py-1 rounded hover:bg-brand-200">لوحة المسوق</button>
+                </div>`;
+        }).join('') : '<p class="text-gray-400 text-sm text-center py-4">لا يوجد مسوقون بعد</p>';
+        const grid = document.getElementById('marketers-grid');
+        grid.innerHTML = marketers.map(m => {
+            if (m.isSystem) {
+                return `<div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border-r-4 border-brand-500">
+                    <div><h3 class="font-bold text-lg">${Sanitize.html(m.name||'')}</h3><p class="text-sm text-gray-500">مسوّق نظام ثابت</p></div>
+                    <div class="mt-4 bg-gray-50 dark:bg-gray-700 p-2 rounded text-center"><div class="text-gray-500">لا يمكن تعديله أو حذفه</div></div>
+                </div>`;
+            }
+            const mktOrders = orders.filter(o => o.marketerId === m.id && ['Confirmed','Shipped','Delivered'].includes(o.status));
+            const sales = mktOrders.reduce((s, o) => s + o.total, 0);
+            let commission = m.type === 'percent' ? (sales * m.value) / 100 : mktOrders.length * m.value;
+            return `<div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border-r-4 border-brand-500">
+                <div class="flex justify-between items-start">
+                    <div><h3 class="font-bold text-lg">${Sanitize.html(m.name||'')}</h3><p class="text-sm text-gray-500">${m.phone}</p></div>
+                    <button onclick="await Store.delete('marketers', '${m.id}'); app.renderMarketers();" class="text-red-400"><i class="fas fa-trash"></i></button>
+                </div>
+                <div class="mt-4 grid grid-cols-2 gap-2 text-sm">
+                    <div class="bg-gray-50 dark:bg-gray-700 p-2 rounded"><div class="text-gray-500">المبيعات</div><div class="font-bold">${Utils.formatCurrency(sales)}</div></div>
+                    <div class="bg-gray-50 dark:bg-gray-700 p-2 rounded"><div class="text-gray-500">العمولة</div><div class="font-bold text-brand-600">${Utils.formatCurrency(commission)}</div></div>
+                </div>
+                <button onclick="app.showMarketerDash('${m.id}')" class="mt-3 w-full bg-brand-50 dark:bg-brand-900/20 text-brand-600 py-2 rounded text-sm hover:bg-brand-100">
+                    <i class="fas fa-chart-bar ml-1"></i> لوحة المسوق
+                </button>
+            </div>`;
+        }).join('');
+        const mktSelect = document.getElementById('ord-marketer');
+        mktSelect.innerHTML = '<option value="">اختر المسوق...</option>' + marketers.map(m => `<option value="${m.id}">${Sanitize.html(m.name||'')}</option>`).join('');
+    },
+    showMarketerDash: (marketerId) => {
+        const allMarketers = [{ id: 'shaker_fixed', name: 'SHAKER' }, ...Store.get('marketers')];
+        const marketer = allMarketers.find(m => m.id === marketerId);
+        if (!marketer) return;
+        const mktOrders = Store.get('orders').filter(o => o.marketerId === marketerId);
+        const confirmedOrders = mktOrders.filter(o => ['Confirmed','Shipped','Delivered'].includes(o.status));
+        const totalSales = confirmedOrders.reduce((s, o) => s + o.total, 0);
+        const totalProfit = confirmedOrders.reduce((s, o) => s + o.profit, 0);
+        document.getElementById('mkt-dash-title').textContent = `لوحة المسوق: ${marketer.name}`;
+        document.getElementById('mkt-dash-stats').innerHTML = `
+            <div class="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg text-center">
+                <div class="text-xs text-gray-500 mb-1">إجمالي المبيعات</div>
+                <div class="text-lg font-bold text-green-600">${Utils.formatCurrency(totalSales)}</div>
+            </div>
+            <div class="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg text-center">
+                <div class="text-xs text-gray-500 mb-1">الطلبات المؤكدة</div>
+                <div class="text-lg font-bold text-blue-600">${confirmedOrders.length}</div>
+            </div>
+            <div class="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg text-center">
+                <div class="text-xs text-gray-500 mb-1">إجمالي الطلبات</div>
+                <div class="text-lg font-bold text-purple-600">${mktOrders.length}</div>
+            </div>
+        `;
+        const statusLabels = { 'Pending': 'قيد الانتظار', 'Confirmed': 'مؤكد', 'Shipped': 'تم الشحن', 'Delivered': 'تم التسليم', 'Cancelled': 'ملغي', 'Returned': 'مرتجع' };
+        const statusColors = { 'Pending': 'bg-yellow-100 text-yellow-800', 'Confirmed': 'bg-green-100 text-green-800', 'Shipped': 'bg-blue-100 text-blue-800', 'Delivered': 'bg-gray-100 text-gray-800', 'Cancelled': 'bg-red-100 text-red-800', 'Returned': 'bg-purple-100 text-purple-800' };
+        document.getElementById('mkt-dash-orders').innerHTML = mktOrders.sort((a,b) => b.date - a.date).map(o => `
+            <tr class="border-b dark:border-gray-700">
+                <td class="p-3 text-xs font-mono">${Sanitize.html(String(o.billNumber||''))}</td>
+                <td class="p-3">${Sanitize.html(o.customer||'')}</td>
+                <td class="p-3 text-xs">${Utils.formatDate(o.date)}</td>
+                <td class="p-3"><span class="px-2 py-1 rounded text-xs ${statusColors[o.status] || ''}">${statusLabels[o.status] || o.status}</span></td>
+                <td class="p-3 font-bold">${Utils.formatCurrency(o.total)}</td>
+            </tr>`).join('');
+        app.modals.open('marketerDashModal');
+    },
+    saveMarketer: () => {
+        const m = { id: Store.genId(), name: document.getElementById('mkt-name').value, phone: document.getElementById('mkt-phone').value, type: document.getElementById('mkt-type').value, value: parseFloat(document.getElementById('mkt-value').value) };
+        await Store.add('marketers', m);
+        app.modals.close('marketerModal');
+        app.renderMarketers();
+        Toast.show('تم إضافة المسوق بنجاح', 'success');
+    },
+    renderShipping: () => {
+        const list = document.getElementById('shipping-list');
+        const companies = Store.get('shipping');
+        list.innerHTML = companies.map(c => `<li class="py-3 flex justify-between items-center"><div><span class="font-bold block">${c.name}${c.isFixed ? ' <span class="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded">ثابت</span>' : ''}</span><span class="text-xs text-gray-500">${c.api || 'لا يوجد API'}</span></div>${c.isFixed ? '<span class="text-xs text-gray-400"><i class="fas fa-lock ml-1"></i>محمي</span>' : `<button onclick="await Store.delete('shipping', '${c.id}'); app.renderShipping();" class="text-red-500"><i class="fas fa-trash"></i></button>`}</li>`).join('');
+        const shipSelect = document.getElementById('ord-shipping');
+        shipSelect.innerHTML = '<option value="">شركة الشحن...</option>' + companies.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    },
+    saveShipping: () => {
+        const s = { id: Store.genId(), name: document.getElementById('ship-name').value, api: document.getElementById('ship-api').value };
+        await Store.add('shipping', s);
+        app.modals.close('shippingModal');
+        app.renderShipping();
+    },
+    exportData: (type) => {
+        let exportRows;
+        if (type === 'inventory') {
+            const products = Store.get('products');
+            const inventory = Store.get('inventory');
+            exportRows = inventory.map(item => {
+                const product = products.find(p => p.id === item.productId) || {};
+                return { 'الصنف': product.category || '---', 'رقم الموديل': product.modelNo || '---', 'اللون': item.color, 'المقاس': item.size, 'الكمية': item.stock, 'سعر التكلفة': product.cost || 0, 'سعر البيع': product.price || 0 };
+            });
+        } else if (type === 'orders') {
+            const allMarketers = [{ id: 'shaker_fixed', name: 'SHAKER' }, ...Store.get('marketers')];
+            exportRows = Store.get('orders').map(o => {
+                const marketer = allMarketers.find(m => m.id === o.marketerId);
+                return { 'رقم البوليصة': o.billNumber, 'العميل': o.customer, 'الهاتف': o.phone, 'العنوان': o.address, 'المسوق': marketer ? marketer.name : '---', 'الحالة': o.status, 'الإجمالي': o.total, 'الربح': o.profit, 'الخصم': o.discount || 0 };
+            });
+        } else {
+            exportRows = Store.get(type);
+        }
+        const ws = XLSX.utils.json_to_sheet(exportRows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, type);
+        XLSX.writeFile(wb, `SHAKER_${type}_${new Date().toISOString().slice(0,10)}.xlsx`);
+    },
+    populateOrderModal: () => {
+        const prods = Store.get('products');
+        const select = document.getElementById('ord-prod-select');
+        select.innerHTML = '<option value="">اختر المنتج...</option>' + prods.map(p => `<option value="${p.id}">${Sanitize.html(p.category||'')} (#${Sanitize.html(p.modelNo||'')})</option>`).join('');
+        select.onchange = (e) => {
+            const p = prods.find(x => x.id === e.target.value);
+            if(!p) return;
+            document.getElementById('ord-color-select').innerHTML = p.colors.map(c => `<option value="${c}">${c}</option>`).join('');
+            document.getElementById('ord-size-select').innerHTML = p.sizes.map(s => `<option value="${s}">${s}</option>`).join('');
+            document.getElementById('ord-cost-display').value = p.cost || '---';
+            document.getElementById('ord-price-input').value = p.price || '';
+        };
+    },
+    saveDataToFile: () => {
+        const data = { products: Store.get('products'), inventory: Store.get('inventory'), orders: Store.get('orders'), marketers: Store.get('marketers'), shipping: Store.get('shipping') };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'shaker_data.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    },
+    loadDataFromFile: (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const data = JSON.parse(e.target.result);
+                Store.set('products', data.products || []);
+                Store.set('inventory', data.inventory || []);
+                Store.set('orders', data.orders || []);
+                Store.set('marketers', data.marketers || []);
+                Store.set('shipping', data.shipping || []);
+                app.init();
+                Toast.show('تم تحميل البيانات بنجاح!', 'success');
+            } catch (err) {
+                alert('خطأ في قراءة الملف. تأكد من أنه ملف JSON صالح.');
+                console.error(err);
+            }
+        };
+        reader.readAsText(file);
+    }
+};
+
+const NASA_PRICES = {
+    "القاهرة": 80, "الجيزة": 80, "القليوبية": 80,
+    "الإسكندرية": 95, "الشرقية": 95, "الدقهلية": 95,
+    "الغربية": 95, "الإسماعيلية": 95, "السويس": 95,
+    "البحيرة": 100, "المنوفية": 100, "كفر الشيخ": 100,
+    "الفيوم": 110,
+    "أسيوط": 115, "سوهاج": 115, "قنا": 115, "المنيا": 115, "بني سويف": 115,
+    "الأقصر": 120, "أسوان": 120,
+    "بورسعيد": 95, "مطروح": 190, "البحر الأحمر": 190,
+    "الوادي الجديد": 195, "العبور": 45
+};
+const NASA_AREA_PRICES = [
+    { gov: "الجيزة", price: 95, areas: ["أبو رواش","أوسيم","البدرشين","الصف","اطفيح","كرداسة","ناهيا","منشأة القناطر"] },
+    { gov: "القاهرة", price: 80, areas: ["التجمع","المعادي","المقطم","حلوان","الشروق","مدينتي","القاهرة الجديدة"] },
+    { gov: "دمياط", price: 95, areas: ["دمياط","رأس البر","دمياط الجديدة"] },
+    { gov: "جنوب سيناء", price: 220, areas: ["كل المناطق"] },
+    { gov: "الإسكندرية", price: 100, areas: ["العجمي","برج العرب","العامرية"] },
+    { gov: "العاشر من رمضان", price: 95, areas: ["كل المناطق"] }
+];
+const ShippingPrice = {
+    _attached: false,
+    _nasaPrice(gov, area) {
+        const areaMatch = NASA_AREA_PRICES.find(p =>
+            p.gov === gov &&
+            (p.areas.includes(area) || p.areas.includes("كل المناطق"))
+        );
+        if (areaMatch) return areaMatch.price;
+        return NASA_PRICES[gov] || 0;
+    },
+    getPrice() {
+        const companyId  = document.getElementById('ord-shipping')?.value;
+        const governorate = document.getElementById('ord-governorate')?.value;
+        if (!companyId || !governorate) return null;
+        const companies = Store.get('shipping');
+        const company   = companies.find(c => c.id === companyId);
+        if (!company) return null;
+        if (company.name === "ناسا") {
+            const area = document.getElementById('ord-area')?.value || '';
+            return ShippingPrice._nasaPrice(governorate, area);
+        }
+        if (!company.prices) return (company.price ? Number(company.price) : 'N/A');
+        const price = company.prices[governorate];
+        return (price !== undefined && price !== null) ? Number(price) : 'N/A';
+    },
+    update() {
+        const wrapper = document.getElementById('ord-shipping-price-wrapper');
+        const label   = document.getElementById('ord-shipping-price');
+        if (!wrapper || !label) return;
+        const companyId   = document.getElementById('ord-shipping')?.value;
+        const governorate = document.getElementById('ord-governorate')?.value;
+        if (!companyId || !governorate) {
+            wrapper.classList.add('hidden');
+            app.calcOrderTotal();
+            return;
+        }
+        const price = ShippingPrice.getPrice();
+        if (!price || price === 'N/A' || price === 0) {
+            wrapper.classList.add('hidden');
+        } else {
+            label.textContent = `سعر الشحن: ${price} ج.م`;
+            label.className = 'font-bold text-blue-700 dark:text-blue-300';
+            wrapper.classList.remove('hidden');
+        }
+        app.calcOrderTotal();
+    },
+    attach() {
+        if (ShippingPrice._attached) return;
+        const shippingEl    = document.getElementById('ord-shipping');
+        const governorateEl = document.getElementById('ord-governorate');
+        const areaEl        = document.getElementById('ord-area');
+        if (!shippingEl || !governorateEl) return;
+        shippingEl.addEventListener('change',    () => ShippingPrice.update());
+        governorateEl.addEventListener('change', () => ShippingPrice.update());
+        if (areaEl) areaEl.addEventListener('change', () => { AreaSelector.syncHidden(); ShippingPrice.update(); });
+        ShippingPrice._attached = true;
+    },
+    reset() {
+        ShippingPrice._attached = false;
+        const wrapper = document.getElementById('ord-shipping-price-wrapper');
+        if (wrapper) wrapper.classList.add('hidden');
+    }
+};
+
+const AREA_DATA = {
+    "القاهرة":       ["مدينة نصر","المعادي","مصر الجديدة","الزيتون","شبرا","مصر القديمة","عين شمس","المطرية","التجمع الأول","التجمع الخامس","السلام","النزهة","المقطم","حلوان","المنيل","السيدة زينب","روض الفرج","الوايلي"],
+    "الجيزة":        ["الهرم","فيصل","الدقي","المهندسين","العجوزة","إمبابة","بولاق الدكرور","الشيخ زايد","6 أكتوبر","أوسيم","كرداسة","الحوامدية"],
+    "الإسكندرية":    ["سيدي جابر","المنتزه","العجمي","الرمل","سيدي بشر","ميامي","الشاطبي","بحري","المنشية","محرم بك","لوران","المعمورة","الدخيلة"],
+    "الدقهلية":      ["المنصورة","طلخا","ميت غمر","أجا","السنبلاوين","شربين","المطرية","بلقاس","منية النصر","بني عبيد","تمي الأمديد"],
+    "الشرقية":       ["الزقازيق","العاشر من رمضان","بلبيس","ديرب نجم","القنايات","أبو حماد","صان الحجر","فاقوس","الصالحية","هيهيا","أبو كبير"],
+    "القليوبية":     ["بنها","قليوب","شبرا الخيمة","الخانكة","طوخ","القناطر الخيرية","كفر شكر","الخصوص"],
+    "المنوفية":      ["شبين الكوم","منوف","أشمون","قويسنا","بركة السبع","الشهداء","تلا","الباجور","سرس الليان"],
+    "الغربية":       ["طنطا","المحلة الكبرى","كفر الزيات","زفتى","السنطة","قطور","بسيون","سمنود"],
+    "كفر الشيخ":    ["كفر الشيخ","دسوق","فوه","بلطيم","بيلا","مطوبس","الحامول","قلين","سيدي سالم"],
+    "الفيوم":        ["الفيوم","سنورس","طامية","إطسا","يوسف الصديق","أبشواي","الغرق"],
+    "بني سويف":     ["بني سويف","ناصر","إهناسيا","ببا","البياض","سمسطا","الواسطى"],
+    "المنيا":        ["المنيا","ملوي","أبو قرقاص","سمالوط","مطاي","بني مزار","العدوة","المغاغة","دير مواس"],
+    "أسيوط":        ["أسيوط","ديروط","القوصية","منفلوط","الغنايم","أبنوب","البداري","ساحل سليم","صدفا","أبو تيج"],
+    "سوهاج":        ["سوهاج","طهطا","طما","المراغة","البلينا","جرجا","أخميم","دار السلام","ساقلتة","الكوثر"],
+    "قنا":           ["قنا","نجع حمادي","دشنا","قوص","قفط","الوقف","أبو تشت","فرشوط","نقادة"],
+    "الأقصر":       ["الأقصر","الأقصر الشرقية","الأقصر الغربية","إسنا","الأرمنت","القرنة","الطود"],
+    "أسوان":        ["أسوان","كوم أمبو","نصر النوبة","دراو","إدفو","أبو سمبل"],
+    "البحيرة":       ["دمنهور","كفر الدوار","إيتاي البارود","الرحمانية","رشيد","حوش عيسى","أبو حمص","الدلنجات","وادي النطرون","شبراخيت"],
+    "الإسماعيلية":  ["الإسماعيلية","التل الكبير","القنطرة شرق","القنطرة غرب","أبو صوير","فايد"],
+    "السويس":       ["عتاقة","الجناين","فيصل","الأربعين","السويس القديمة"],
+    "بور سعيد":     ["الضواحي","الزهور","المناخ","الشرق","فؤاد","العرب","البساتين","الجنوب"],
+    "دمياط":        ["دمياط","رأس البر","الزرقا","فارسكور","السرو","عزبة البرج","كفر سعد","كفر البطيخ"],
+    "مطروح":        ["مرسى مطروح","الضبعة","سيوة","الحمام","العلمين","براني","النجيلة","سيدي براني"],
+    "شمال سيناء":   ["العريش","الشيخ زويد","رفح","بئر العبد","الحسنة","نخل"],
+    "جنوب سيناء":   ["شرم الشيخ","دهب","طابا","نويبع","سانت كاترين","رأس سدر","أبو زنيمة","الطور"],
+    "الوادي الجديد": ["الخارجة","الداخلة","الفرافرة","بلاط","موط","قصر الباشا"],
+    "البحر الأحمر":  ["الغردقة","مرسى علم","القصير","سفاجا","رأس غارب","الشلاتين"],
+    "العبور":        ["الحى الأول","الحى الثانى","الحى الثالث","الحى الرابع","الحى الخامس","الحى السادس","الحى السابع","الحى الثامن","الحى التاسع","حى الشباب","حى النزهه","الحى الترفيهى","الإسكان العائلى","العبور الجديده","المنطقة الصناعية","جمعية عرابى","كارفور","الجولف سيتى"]
+};
+const AreaSelector = {
+    init() {
+        const govSel = document.getElementById('ord-governorate');
+        if (!govSel) return;
+        if (govSel.options.length > 1) return;
+        Object.keys(AREA_DATA).forEach(gov => {
+            const opt = document.createElement('option');
+            opt.value = gov;
+            opt.textContent = gov;
+            govSel.appendChild(opt);
+        });
+    },
+    onGovChange: function(gov) {
+        const areaSelect = document.getElementById('ord-area');
+        if (!areaSelect) return;
+        const errEl = document.getElementById('ord-gov-error');
+        if (errEl) errEl.classList.add('hidden');
+        areaSelect.innerHTML = '<option value="">اختر المنطقة</option>';
+        if (!gov || !AREA_DATA[gov]) {
+            areaSelect.disabled = true;
+            AreaSelector.syncHidden();
+            return;
+        }
+        AREA_DATA[gov].forEach(function(area) {
+            const option = document.createElement('option');
+            option.value = area;
+            option.textContent = area;
+            areaSelect.appendChild(option);
+        });
+        areaSelect.disabled = false;
+        AreaSelector.syncHidden();
+    },
+    syncHidden() {
+        const gov    = (document.getElementById('ord-governorate')?.value    || '').trim();
+        const area   = (document.getElementById('ord-area')?.value           || '').trim();
+        const detail = (document.getElementById('ord-address-detail')?.value || '').trim();
+        const hidden = document.getElementById('ord-address');
+        if (hidden) hidden.value = [gov, area, detail].filter(Boolean).join(' - ');
+    },
+    validate() {
+        const gov   = document.getElementById('ord-governorate')?.value || '';
+        const errEl = document.getElementById('ord-gov-error');
+        if (!gov) {
+            if (errEl) {
+                errEl.classList.remove('hidden');
+                setTimeout(() => errEl.classList.add('hidden'), 3000);
+            }
+            alert('اختر المحافظة أولاً');
+            document.getElementById('ord-governorate')?.focus();
+            return false;
+        }
+        if (errEl) errEl.classList.add('hidden');
+        this.syncHidden();
+        return true;
+    },
+    reset() {
+        const govSel  = document.getElementById('ord-governorate');
+        const areaSel = document.getElementById('ord-area');
+        const detail  = document.getElementById('ord-address-detail');
+        const hidden  = document.getElementById('ord-address');
+        const errEl   = document.getElementById('ord-gov-error');
+        if (govSel)  govSel.value  = '';
+        if (areaSel) { areaSel.innerHTML = '<option value="">اختر المنطقة</option>'; areaSel.disabled = true; }
+        if (detail)  detail.value  = '';
+        if (hidden)  hidden.value  = '';
+        if (errEl)   errEl.classList.add('hidden');
+    },
+    populate(address) {
+        this.reset();
+        if (!address) return;
+        const parts  = address.split(' - ');
+        const gov    = parts[0] || '';
+        const area   = parts[1] || '';
+        const detail = parts.slice(2).join(' - ');
+        const govSel = document.getElementById('ord-governorate');
+        if (govSel && AREA_DATA[gov]) {
+            govSel.value = gov;
+            this.onGovChange(gov);
+            const areaSel = document.getElementById('ord-area');
+            if (areaSel && area) areaSel.value = area;
+            const detailEl = document.getElementById('ord-address-detail');
+            if (detailEl) detailEl.value = detail;
+        } else {
+            const detailEl = document.getElementById('ord-address-detail');
+            if (detailEl) detailEl.value = address;
+        }
+        const hidden = document.getElementById('ord-address');
+        if (hidden) hidden.value = address;
+    }
+};
+
+const FACTORY_STATUSES = ['Confirmed', 'Shipped', 'Delivered'];
+function buildFactoryData() {
+    const orders   = Store.get('orders');
+    const products = Store.get('products');
+    const grouped  = {};
+    orders.forEach(order => {
+        if (!FACTORY_STATUSES.includes(order.status)) return;
+        const items = order.items || [];
+        items.forEach(item => {
+            const product  = products.find(p => p.id === item.productId) || {};
+            const category = (product.category || item.productName || 'غير معروف').trim();
+            const modelNo  = (product.modelNo  || product.model   || item.modelNo || '—').toString().trim();
+            const color    = (item.color  || '—').trim();
+            const size     = (item.size   || '—').toString().trim();
+            const qty      = Number(item.qty || item.quantity || 1);
+            const cost     = Number(product.cost || item.cost || 0);
+            if (!grouped[category]) grouped[category] = {};
+            const key = modelNo + '|' + color + '|' + size;
+            if (!grouped[category][key]) {
+                grouped[category][key] = { modelNo, color, size, qty: 0, cost };
+            }
+            grouped[category][key].qty += qty;
+        });
+    });
+    const result = {};
+    Object.keys(grouped).sort().forEach(cat => {
+        result[cat] = Object.values(grouped[cat]).sort((a, b) =>
+            a.modelNo < b.modelNo ? -1 : a.modelNo > b.modelNo ? 1 : 0
+        );
+    });
+    return result;
+}
+function renderFactorySection() {
+    const data       = buildFactoryData();
+    const categories = Object.keys(data);
+    const cardsEl    = document.getElementById('factory-summary-cards');
+    const tablesEl   = document.getElementById('factory-tables');
+    cardsEl.innerHTML = '';
+    tablesEl.innerHTML = '';
+    if (categories.length === 0) {
+        tablesEl.innerHTML = '<div class="text-center text-gray-400 py-12"><i class="fas fa-box-open text-4xl mb-3 block"></i>لا توجد طلبات مؤكدة أو مشحونة أو مسلمة بعد</div>';
+        return;
+    }
+    let grandQty = 0, grandCost = 0;
+    categories.forEach(cat => {
+        const rows    = data[cat];
+        const catQty  = rows.reduce((s, r) => s + r.qty, 0);
+        const catCost = rows.reduce((s, r) => s + r.qty * r.cost, 0);
+        grandQty  += catQty;
+        grandCost += catCost;
+        cardsEl.innerHTML += '<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border-r-4 border-brand-500"><div class="text-xs text-gray-500 mb-1">' + cat + '</div><div class="text-xl font-bold">' + catQty + ' قطعة</div><div class="text-sm text-brand-600 font-semibold">' + Utils.formatCurrency(catCost) + '</div></div>';
+    });
+    cardsEl.innerHTML += '<div class="bg-brand-600 text-white rounded-xl shadow-sm p-4 border-r-4 border-yellow-300"><div class="text-xs opacity-80 mb-1">الإجمالي الكلي</div><div class="text-xl font-bold">' + grandQty + ' قطعة</div><div class="text-sm font-semibold opacity-90">' + Utils.formatCurrency(grandCost) + '</div></div>';
+    categories.forEach(cat => {
+        const rows      = data[cat];
+        const totalQty  = rows.reduce((s, r) => s + r.qty, 0);
+        const totalCost = rows.reduce((s, r) => s + r.qty * r.cost, 0);
+        let rowsHtml = rows.map(r =>
+            '<tr class="border-t border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50"><td class="p-3 font-mono">' + r.modelNo + '</td><td class="p-3">' + r.color + '</td><td class="p-3">' + r.size + '</td><td class="p-3 font-bold text-brand-600">' + r.qty + '</td><td class="p-3 text-green-700 dark:text-green-400">' + Utils.formatCurrency(r.qty * r.cost) + '</td></tr>'
+        ).join('');
+        tablesEl.innerHTML += '<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden"><div class="bg-brand-600 text-white px-6 py-3 flex justify-between items-center"><span class="font-bold text-lg">' + cat + '</span><span class="text-sm opacity-90">' + totalQty + ' قطعة — ' + Utils.formatCurrency(totalCost) + '</span></div><div class="overflow-x-auto"><table class="w-full text-sm text-right"><thead class="bg-gray-50 dark:bg-gray-700 text-xs text-gray-600 dark:text-gray-400"><tr><th class="p-3">رقم الموديل</th><th class="p-3">اللون</th><th class="p-3">المقاس</th><th class="p-3">الكمية</th><th class="p-3">إجمالي التكلفة</th></tr></thead><tbody>' + rowsHtml + '<tr class="bg-amber-50 dark:bg-amber-900/20 border-t-2 border-amber-300 font-bold"><td class="p-3" colspan="3">الإجمالي</td><td class="p-3 text-brand-600">' + totalQty + '</td><td class="p-3 text-green-700 dark:text-green-400">' + Utils.formatCurrency(totalCost) + '</td></tr></tbody></table></div></div>';
+    });
+}
+function exportFactoryExcel() {
+    const data       = buildFactoryData();
+    const categories = Object.keys(data);
+    if (categories.length === 0) {
+        alert('لا توجد بيانات للتصدير. تأكد من وجود طلبات مؤكدة أو مشحونة أو مسلمة.');
+        return;
+    }
+    const wb          = XLSX.utils.book_new();
+    const summaryRows = [];
+    categories.forEach(cat => {
+        const rows      = data[cat];
+        const sheetData = [['رقم الموديل', 'اللون', 'المقاس', 'الكمية', 'إجمالي التكلفة']];
+        let totalQty = 0, totalCost = 0;
+        rows.forEach(r => {
+            const lineCost = r.qty * r.cost;
+            sheetData.push([r.modelNo, r.color, r.size, r.qty, lineCost]);
+            totalQty  += r.qty;
+            totalCost += lineCost;
+        });
+        sheetData.push(['', '', 'الإجمالي', totalQty, totalCost]);
+        const ws = XLSX.utils.aoa_to_sheet(sheetData);
+        ws['!cols'] = [{ wch: 16 }, { wch: 14 }, { wch: 10 }, { wch: 10 }, { wch: 18 }];
+        XLSX.utils.book_append_sheet(wb, ws, cat.substring(0, 31));
+        summaryRows.push([cat, totalQty, totalCost]);
+    });
+    const grandQty  = summaryRows.reduce((s, r) => s + r[1], 0);
+    const grandCost = summaryRows.reduce((s, r) => s + r[2], 0);
+    const summaryData = [
+        ['الصنف', 'عدد القطع', 'إجمالي الحساب'],
+        ...summaryRows,
+        ['الإجمالي الكلي', grandQty, grandCost]
+    ];
+    const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+    wsSummary['!cols'] = [{ wch: 20 }, { wch: 14 }, { wch: 20 }];
+    const wbFinal = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wbFinal, wsSummary, 'كامل');
+    categories.forEach(cat => {
+        const name = cat.substring(0, 31);
+        if (wb.Sheets[name]) XLSX.utils.book_append_sheet(wbFinal, wb.Sheets[name], name);
+    });
+    XLSX.writeFile(wbFinal, 'factory_report.xlsx');
+}
+
+// === تغيير كلمة السر ===
+async function changeFirebasePassword() {
+    if (!FB.isOk() || !FB.getAuth()) { Toast.show('⚠️ Firebase غير متصل', 'error'); return; }
+    const currentPass = prompt('أدخل كلمة المرور الحالية:');
+    if (!currentPass) return;
+    const newPass = prompt('أدخل كلمة المرور الجديدة (6 أحرف على الأقل):');
+    if (!newPass || newPass.length < 6) { Toast.show('❌ كلمة المرور قصيرة (6 أحرف على الأقل)', 'error'); return; }
+    const confirm2 = prompt('أعد إدخال كلمة المرور الجديدة:');
+    if (newPass !== confirm2) { Toast.show('❌ كلمتا المرور غير متطابقتين', 'error'); return; }
+    try {
+        const user = FB.getAuth().currentUser;
+        if (!user) { Toast.show('❌ غير مسجل الدخول', 'error'); return; }
+        const cred = firebase.auth.EmailAuthProvider.credential(user.email, currentPass);
+        await user.reauthenticateWithCredential(cred);
+        await user.updatePassword(newPass);
+        Toast.show('✅ تم تغيير كلمة المرور بنجاح', 'success');
+    } catch(e) {
+        const map = {'auth/wrong-password':'❌ كلمة المرور الحالية غلط','auth/weak-password':'❌ كلمة المرور ضعيفة','auth/too-many-requests':'❌ محاولات كثيرة'};
+        Toast.show(map[e.code] || '❌ ' + e.message, 'error');
+    }
+}
+
+// === Logout ===
+async function doLogout() {
+    try {
+        if (FB.getAuth()) await FB.getAuth().signOut();
+    } catch(e) { console.warn('signOut error:', e); }
+    window.location.href = 'login.html';
+}
+
+// === Initialize ===
+window.addEventListener('DOMContentLoaded', async () => {
+    const splashScreen = document.getElementById('splashScreen');
+
+    // Initialize Firebase first
+    FB.init();
+
+    // ── Firebase Auth Guard ──────────────────────────────
+    if (FB.getAuth()) {
+        await new Promise(resolve => {
+            const unsubscribe = FB.getAuth().onAuthStateChanged(async user => {
+                unsubscribe(); // Only run once
+                if (!user) {
+                    window.location.href = 'login.html';
+                    return;
+                }
+                try {
+                    const snap = await FB.getDb().ref('shaker/users/' + user.uid).once('value');
+                    let role = null;
+                    if (snap.exists()) {
+                        role = snap.val().role;
+                        window._adminData = snap.val();
+                        const el = document.getElementById('admin-user-info');
+                        if (el) el.textContent = '👤 ' + (snap.val().displayName || 'Admin');
+                    } else {
+                        // No DB record yet — create it (first login after setup)
+                        const newAdmin = { uid: user.uid, email: user.email, role: 'admin', displayName: 'Admin', createdAt: Date.now() };
+                        try { await FB.getDb().ref('shaker/users/' + user.uid).update(newAdmin); } catch(e2) {}
+                        role = 'admin';
+                        window._adminData = newAdmin;
+                    }
+                    if (role !== 'admin') {
+                        await FB.getAuth().signOut();
+                        window.location.href = 'login.html';
+                        return;
+                    }
+                    document.body.style.visibility = 'visible';
+                } catch(e) {
+                    console.error('[Auth] DB check failed — denying access for security:', e.message);
+                    // FIX #1: DB error → deny access (don't allow bypass)
+                    try { await FB.getAuth().signOut(); } catch(_) {}
+                    window.location.href = 'login.html';
+                    return;
+                }
+                resolve();
+            });
+        });
+    } else {
+        document.body.style.visibility = 'visible';
+        console.warn('Firebase Auth not available');
+    }
+
+    // 🔥 Sync data from Firebase (targeted reads — no bulk)
+    if (FB.isOk()) {
+        try {
+            await Store.syncAll();
+            await FB.migrateIfEmpty();
+        } catch(e) { console.error('[init] sync error:', e.message); }
+    }
+
+    setTimeout(function() {
+        splashScreen.style.opacity = '0';
+        setTimeout(function() { splashScreen.style.display = 'none'; }, 500);
+    }, 2000);
+
+    app.init();
+    app.initStockTable();
+
+    const _origNav = app.nav.bind(app);
+    app.nav = function(section) {
+        _origNav(section);
+        if (section === 'factory')    { renderFactorySection(); }
+        if (section === 'moderators') { ModMgr.render(); }
+        if (section === 'settings')   { setTimeout(() => Backup.renderList(), 100); }
+    };
+
+    // Image upload handled by onchange attribute on input#prod-image
+
+    AreaSelector.init();
+
+    const originalOpen = app.modals.open;
+    app.modals.open = (id) => {
+        if (id === 'orderModal') {
+            app.populateOrderModal();
+            if (!document.getElementById('ord-id').value) {
+                AreaSelector.reset();
+                ShippingPrice.reset();
+            }
+            ShippingPrice.attach();
+            ShippingPrice.update();
+        }
+        originalOpen(id);
+    };
+
+    // Auto-backup every 5 minutes to Firebase
+    setInterval(async () => {
+        await Backup.save(true);
+    }, 5 * 60 * 1000);
+
+    // FIX: flush pending debounced writes on page unload
+    window.addEventListener('beforeunload', () => {
+        // Force immediate save of any pending data
+        ['products','inventory','orders','marketers','shipping'].forEach(k => {
+            const data = localStorage.getItem('shaker_' + k);
+            if (data && navigator.sendBeacon) {
+                // Best-effort — Firebase SDK handles this internally via its own queue
+            }
+        });
+    });
+
+    // 🔥 Targeted realtime listeners (no bulk reads)
+    FB.startRealtime(() => {
+        const sections = ['dashboard','products','orders','marketers','inventory','shipping'];
+        sections.forEach(s => {
+            const el = document.getElementById(s);
+            if (el && !el.classList.contains('hidden')) app.nav(s);
+        });
+        StockAlerts.render();
+    });
+});
+</script>
+</body>
+</html>

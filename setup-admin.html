@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SHAKER - إعداد الأدمن</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Tajawal',sans-serif;}
+body{background:#0f172a;color:#e2e8f0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:2rem;}
+.card{background:#1e293b;border-radius:1.5rem;padding:2.5rem;width:100%;max-width:500px;border:1px solid #334155;}
+h1{font-size:1.8rem;font-weight:700;color:#f59e0b;margin-bottom:.5rem;text-align:center;}
+.sub{text-align:center;color:#64748b;font-size:.9rem;margin-bottom:1.5rem;}
+.warn{background:#451a03;border:1px solid #92400e;color:#fcd34d;border-radius:.75rem;padding:1rem;font-size:.9rem;margin-bottom:1.5rem;line-height:1.7;}
+.f{margin-bottom:1.2rem;}
+.f label{display:block;font-size:.9rem;color:#94a3b8;margin-bottom:.4rem;}
+.f input{width:100%;padding:.8rem 1rem;background:#0f172a;border:1px solid #334155;border-radius:.75rem;color:#e2e8f0;font-size:1rem;font-family:'Tajawal',sans-serif;}
+.f input:focus{outline:none;border-color:#f59e0b;}
+.btn{width:100%;padding:.9rem;background:linear-gradient(135deg,#f59e0b,#d97706);border:none;border-radius:.75rem;color:#000;font-size:1.1rem;font-weight:700;cursor:pointer;font-family:'Tajawal',sans-serif;}
+.btn:disabled{opacity:.5;cursor:not-allowed;}
+.msg{margin-top:1rem;padding:.85rem 1rem;border-radius:.75rem;font-size:.9rem;text-align:center;display:none;line-height:1.6;white-space:pre-line;}
+.ok{background:#052e16;border:1px solid #166534;color:#4ade80;display:block;}
+.er{background:#450a0a;border:1px solid #991b1b;color:#f87171;display:block;}
+.blocked{background:#1e1b4b;border:1px solid #3730a3;color:#a5b4fc;border-radius:.75rem;padding:1.5rem;text-align:center;}
+</style>
+</head>
+<body>
+<div class="card" id="main-card">
+  <div id="checking" style="text-align:center;padding:2rem;color:#64748b;">جارٍ التحقق...</div>
+</div>
+<script>
+const FC={apiKey:"AIzaSyBA0tDEOqi1L2nYF-4vS2aPQIADzLvs7ms",authDomain:"shaker-b307b.firebaseapp.com",databaseURL:"https://shaker-b307b-default-rtdb.firebaseio.com",projectId:"shaker-b307b",storageBucket:"shaker-b307b.firebasestorage.app",messagingSenderId:"594608212735",appId:"1:594608212735:web:19450e64ce6b09364e9aca"};
+let auth,db;
+(async function(){
+try{if(!firebase.apps.length)firebase.initializeApp(FC);auth=firebase.auth();db=firebase.database();}catch(e){}
+const card=document.getElementById('main-card');
+// Check if setup already done
+try{
+  const snap=await db.ref('shaker/setup_done').once('value');
+  if(snap.exists()&&snap.val()===true){
+    card.innerHTML='<div class="blocked"><h2 style="font-size:1.5rem;margin-bottom:.5rem">🔒 تم الإعداد مسبقاً</h2><p style="margin:.5rem 0">النظام محمي — لا يمكن إعادة إنشاء الأدمن</p><br><a href="login.html" style="color:#818cf8;text-decoration:none">← انتقل لتسجيل الدخول</a></div>';
+    return;
+  }
+}catch(e){}
+card.innerHTML=`
+  <h1>⚙️ إعداد الأدمن</h1>
+  <p class="sub">تُستخدم مرة واحدة فقط ثم تُحذف</p>
+  <div class="warn">⚠️ قبل البدء:<br>1. فعّل Email/Password في Firebase Console → Authentication<br>2. اضبط Rules مؤقتاً: { "rules": { ".write": true, ".read": "auth != null" } }<br>3. بعد الإنشاء طبّق config/firebase-rules.json</div>
+  <div class="f"><label>البريد الإلكتروني</label><input type="email" id="em" placeholder="admin@yourcompany.com"></div>
+  <div class="f"><label>كلمة المرور (6+ أحرف)</label><input type="password" id="pw"></div>
+  <div class="f"><label>تأكيد كلمة المرور</label><input type="password" id="pw2"></div>
+  <div class="f"><label>الاسم</label><input type="text" id="dn" value="Admin"></div>
+  <button class="btn" id="sb" onclick="doSetup()">إنشاء حساب الأدمن</button>
+  <div class="msg" id="rm"></div>`;
+})();
+
+function show(m,t){const el=document.getElementById('rm');el.textContent=m;el.className='msg '+(t==='ok'?'ok':'er');}
+async function doSetup(){
+  const em=document.getElementById('em').value.trim();
+  const pw=document.getElementById('pw').value;
+  const pw2=document.getElementById('pw2').value;
+  const dn=document.getElementById('dn').value.trim()||'Admin';
+  const btn=document.getElementById('sb');
+  if(!em||!pw){show('يرجى تعبئة جميع الحقول','er');return;}
+  if(pw.length<6){show('كلمة المرور يجب أن تكون 6 أحرف على الأقل','er');return;}
+  if(pw!==pw2){show('كلمتا المرور غير متطابقتين','er');return;}
+  btn.disabled=true;btn.textContent='جارٍ الإنشاء...';
+  try{
+    const cred=await auth.createUserWithEmailAndPassword(em,pw);
+    const uid=cred.user.uid;
+    await db.ref('shaker/users/'+uid).set({uid,email:em,displayName:dn,role:'admin',active:true,createdAt:Date.now()});
+    await db.ref('shaker/setup_done').set(true);
+    show('✅ تم إنشاء الأدمن!\n\n1. احذف setup-admin.html\n2. طبّق config/firebase-rules.json\n3. افتح login.html','ok');
+    btn.textContent='✅ تم — احذف هذا الملف';
+  }catch(e){
+    const m={'auth/email-already-in-use':'هذا البريد مستخدم — افتح login.html مباشرة','auth/operation-not-allowed':'فعّل Email/Password في Firebase Console','auth/weak-password':'كلمة المرور ضعيفة'};
+    show(m[e.code]||e.message,'er');
+    btn.disabled=false;btn.textContent='إنشاء حساب الأدمن';
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://fonts.googleapis.com https://fonts.gstatic.com https://www.gstatic.com https://shaker-b307b-default-rtdb.firebaseio.com wss://shaker-b307b-default-rtdb.firebaseio.com https://identitytoolkit.googleapis.com data: 'unsafe-inline'; script-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://www.gstatic.com 'unsafe-inline' 'unsafe-eval'; img-src * data: blob:; connect-src 'self' https: wss:;">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SHAKER - لوحة المشرف</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="js/firebase.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/store.js"></script>
+<script src="js/ui.js"></script>
+<script>
+tailwind.config = {
+    darkMode: 'class',
+    theme: { extend: { fontFamily: { sans: ['Tajawal', 'sans-serif'] }, colors: { brand: { 500: '#6366f1', 600: '#4f46e5', 900: '#312e81' } } } }
+}
+</script>
+<style>
+body { font-family: 'Tajawal', sans-serif; }
+.sidebar-item.active { background-color: #4f46e5; color: white; }
+.sidebar-item:hover:not(.active) { background-color: #f3f4f6; }
+.dark .sidebar-item:hover:not(.active) { background-color: #374151; }
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-thumb { background: #4f46e5; border-radius: 4px; }
+#toast-container { position:fixed; bottom:1rem; left:1rem; z-index:9999; display:flex; flex-direction:column; gap:0.5rem; }
+.toast { padding:0.75rem 1.25rem; border-radius:0.5rem; color:white; font-size:0.9rem; box-shadow:0 4px 12px rgba(0,0,0,0.15); max-width:320px; animation:slideIn 0.3s ease; }
+@keyframes slideIn { from{transform:translateX(-100%);opacity:0} to{transform:translateX(0);opacity:1} }
+.chat-bubble-admin { background:#4f46e5; color:white; border-radius:18px 18px 4px 18px; }
+.chat-bubble-me { background:#e5e7eb; color:#1f2937; border-radius:18px 18px 18px 4px; }
+.dark .chat-bubble-me { background:#374151; color:#f3f4f6; }
+.status-badge { display:inline-block; padding:2px 10px; border-radius:20px; font-size:0.75rem; font-weight:600; }
+.badge-pending   { background:#fef3c7; color:#92400e; }
+.badge-confirmed { background:#d1fae5; color:#065f46; }
+.badge-shipped   { background:#dbeafe; color:#1e40af; }
+.badge-delivered { background:#f3f4f6; color:#374151; }
+.badge-cancelled { background:#fee2e2; color:#991b1b; }
+.badge-returned  { background:#ede9fe; color:#5b21b6; }
+</style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-colors duration-300">
+
+<!-- Toast -->
+<div id="toast-container"></div>
+
+<!-- Layout -->
+<div class="flex h-screen overflow-hidden">
+
+<!-- Sidebar -->
+<aside id="sidebar" class="w-64 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 flex flex-col hidden md:flex z-20">
+    <div class="h-16 flex items-center justify-center border-b border-gray-200 dark:border-gray-700 px-4">
+        <div class="flex items-center gap-3">
+            <img src="assets/images/logo.png" alt="SHAKER" class="h-10 w-auto rounded" onerror="this.style.display='none'">
+            <div>
+                <h1 class="text-xl font-bold text-brand-600 dark:text-indigo-400">SHAKER</h1>
+                <span class="text-xs text-gray-500 block">بوابة المشرف</span>
+            </div>
+        </div>
+    </div>
+    <nav class="flex-1 overflow-y-auto py-4">
+        <ul class="space-y-1 px-2">
+            <li><button onclick="modNav('dashboard')" class="sidebar-item w-full text-right px-4 py-3 rounded-lg flex items-center gap-3 transition"><i class="fas fa-chart-line w-6"></i> لوحة التحكم</button></li>
+            <li><button onclick="modNav('orders')" class="sidebar-item w-full text-right px-4 py-3 rounded-lg flex items-center gap-3 transition"><i class="fas fa-shopping-cart w-6"></i> طلباتي</button></li>
+            <li><button onclick="modNav('inventory')" class="sidebar-item w-full text-right px-4 py-3 rounded-lg flex items-center gap-3 transition"><i class="fas fa-boxes w-6"></i> المخزون</button></li>
+            <li><button onclick="modNav('chat')" class="sidebar-item w-full text-right px-4 py-3 rounded-lg flex items-center gap-3 transition" id="chat-nav-btn"><i class="fas fa-comments w-6"></i> المحادثة <span id="chat-badge" class="hidden bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center mr-auto">!</span></button></li>
+        </ul>
+    </nav>
+    <div class="p-4 border-t border-gray-200 dark:border-gray-700 space-y-2">
+        <div id="mod-user-info" class="text-xs text-center text-indigo-500 font-bold mb-1"></div>
+        <button onclick="toggleTheme()" class="w-full py-2 bg-gray-200 dark:bg-gray-700 rounded text-sm"><i class="fas fa-moon"></i> الوضع الليلي</button>
+        <button onclick="doLogout()" class="w-full py-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded text-sm"><i class="fas fa-sign-out-alt"></i> تسجيل الخروج</button>
+    </div>
+</aside>
+
+<!-- Main -->
+<main class="flex-1 flex flex-col h-screen overflow-hidden">
+    <!-- Mobile Header -->
+    <header class="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-4 md:hidden">
+        <h1 class="text-lg font-bold text-brand-600">SHAKER - مشرف</h1>
+        <button onclick="document.getElementById('sidebar').classList.toggle('hidden')" class="text-gray-500"><i class="fas fa-bars"></i></button>
+    </header>
+
+    <div id="content-area" class="flex-1 overflow-y-auto p-4 md:p-8">
+
+        <!-- DASHBOARD -->
+        <section id="sec-dashboard" class="space-y-6">
+            <h2 class="text-2xl font-bold flex items-center gap-2">
+                <i class="fas fa-chart-line text-brand-600"></i> لوحة التحكم
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border-r-4 border-indigo-500">
+                    <div class="text-gray-500 text-sm">إجمالي طلباتي</div>
+                    <div class="text-2xl font-bold text-indigo-600" id="mod-dash-total">0</div>
+                </div>
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border-r-4 border-green-500">
+                    <div class="text-gray-500 text-sm">الطلبات المؤكدة</div>
+                    <div class="text-2xl font-bold text-green-600" id="mod-dash-confirmed">0</div>
+                </div>
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border-r-4 border-yellow-500">
+                    <div class="text-gray-500 text-sm">قيد الانتظار</div>
+                    <div class="text-2xl font-bold text-yellow-600" id="mod-dash-pending">0</div>
+                </div>
+            </div>
+            <!-- Recent Orders -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+                <h3 class="font-bold mb-4 flex items-center gap-2"><i class="fas fa-clock text-indigo-500"></i> آخر طلباتي</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-right">
+                        <thead class="bg-gray-50 dark:bg-gray-700">
+                            <tr><th class="p-3">البوليصة</th><th class="p-3">العميل</th><th class="p-3">الحالة</th><th class="p-3">الإجمالي</th><th class="p-3">التاريخ</th></tr>
+                        </thead>
+                        <tbody id="mod-dash-recent"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ORDERS -->
+        <section id="sec-orders" class="hidden space-y-6">
+            <div class="flex justify-between items-center">
+                <h2 class="text-2xl font-bold flex items-center gap-2"><i class="fas fa-shopping-cart text-brand-600"></i> طلباتي</h2>
+                <button onclick="MOD.openNewOrder()" class="bg-brand-600 text-white px-4 py-2 rounded-lg hover:bg-brand-700"><i class="fas fa-plus"></i> طلب جديد</button>
+            </div>
+            <!-- Search -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 space-y-3">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <input type="text" id="mod-search-customer" placeholder="اسم العميل أو الهاتف" class="border rounded p-2 text-sm dark:bg-gray-700 dark:border-gray-600" oninput="MOD.searchOrders()">
+                    <select id="mod-search-status" class="border rounded p-2 text-sm dark:bg-gray-700 dark:border-gray-600" onchange="MOD.searchOrders()">
+                        <option value="">كل الحالات</option>
+                        <option value="Pending">قيد الانتظار</option>
+                        <option value="Confirmed">مؤكد</option>
+                        <option value="Shipped">تم الشحن</option>
+                        <option value="Delivered">تم التسليم</option>
+                        <option value="Cancelled">ملغي</option>
+                        <option value="Returned">مرتجع</option>
+                    </select>
+                    <button onclick="MOD.clearSearch()" class="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded text-sm"><i class="fas fa-times"></i> مسح البحث</button>
+                </div>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-x-auto">
+                <table class="w-full text-sm text-right">
+                    <thead class="bg-gray-50 dark:bg-gray-700">
+                        <tr>
+                            <th class="p-3">البوليصة</th>
+                            <th class="p-3">العميل</th>
+                            <th class="p-3">الهاتف</th>
+                            <th class="p-3">التاريخ</th>
+                            <th class="p-3">الحالة</th>
+                            <th class="p-3">الإجمالي</th>
+                            <th class="p-3">إجراءات</th>
+                        </tr>
+                    </thead>
+                    <tbody id="mod-orders-body"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- INVENTORY (view only) -->
+        <section id="sec-inventory" class="hidden space-y-6">
+            <h2 class="text-2xl font-bold flex items-center gap-2"><i class="fas fa-boxes text-brand-600"></i> المخزون المتاح</h2>
+            <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm">
+                <input type="text" id="mod-inv-search" placeholder="ابحث باسم الصنف أو رقم الموديل..." class="w-full border rounded p-3 bg-gray-50 dark:bg-gray-700 dark:border-gray-600" oninput="MOD.filterInventory()">
+            </div>
+            <div id="mod-inventory-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+        </section>
+
+        <!-- CHAT -->
+        <section id="sec-chat" class="hidden" style="height:calc(100vh - 10rem)">
+            <h2 class="text-2xl font-bold flex items-center gap-2 mb-4"><i class="fas fa-comments text-brand-600"></i> محادثة مع الإدارة</h2>
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm flex flex-col overflow-hidden" style="height:calc(100% - 4rem)">
+                <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-brand-600 flex items-center justify-center text-white font-bold">A</div>
+                    <div>
+                        <div class="font-bold">الإدارة</div>
+                        <div class="text-xs text-green-500" id="chat-status-line">متصل</div>
+                    </div>
+                </div>
+                <div id="mod-chat-messages" class="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50 dark:bg-gray-900"></div>
+                <div class="p-3 border-t border-gray-200 dark:border-gray-700 flex gap-2">
+                    <input type="text" id="mod-chat-input" placeholder="اكتب رسالة للإدارة..." class="flex-1 border rounded-lg p-2 text-sm dark:bg-gray-700 dark:border-gray-600" onkeydown="if(event.key==='Enter') ModChat.send()">
+                    <button onclick="ModChat.send()" class="bg-brand-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-brand-700"><i class="fas fa-paper-plane"></i></button>
+                </div>
+            </div>
+        </section>
+
+    </div><!-- end content-area -->
+</main>
+</div><!-- end layout -->
+
+<!-- ORDER MODAL -->
+<div id="orderModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center p-4">
+<div class="bg-white dark:bg-gray-800 rounded-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+    <div class="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between">
+        <h3 class="text-xl font-bold" id="order-modal-title">طلب جديد</h3>
+        <button onclick="document.getElementById('orderModal').classList.add('hidden')" class="text-gray-500"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="p-6 space-y-4">
+        <input type="hidden" id="ord-id">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <input type="text" id="ord-customer" placeholder="اسم العميل" class="border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
+            <input type="text" id="ord-phone" placeholder="رقم الهاتف" class="border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <input type="text" id="ord-address" placeholder="العنوان" class="border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
+            <select id="ord-marketer" class="border rounded p-2 dark:bg-gray-700 dark:border-gray-600"><option value="">اختر المسوق...</option></select>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <select id="ord-shipping" class="border rounded p-2 dark:bg-gray-700 dark:border-gray-600"><option value="">شركة الشحن...</option></select>
+            <select id="ord-shipping-payer" class="border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
+                <option value="customer">الشحن على العميل</option>
+                <option value="company">الشحن على الشركة</option>
+            </select>
+        </div>
+        <textarea id="ord-note" rows="2" placeholder="ملاحظة (اختياري)" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 text-sm resize-none"></textarea>
+        <!-- Add items -->
+        <div class="border rounded p-4 bg-gray-50 dark:bg-gray-700">
+            <h4 class="font-bold mb-3">إضافة منتجات</h4>
+            <div class="grid grid-cols-1 md:grid-cols-6 gap-2 items-end">
+                <div class="md:col-span-2">
+                    <label class="text-xs">الموديل</label>
+                    <select id="ord-prod-select" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600" onchange="MOD.onProductChange()"></select>
+                </div>
+                <div>
+                    <label class="text-xs">اللون</label>
+                    <select id="ord-color-select" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600"></select>
+                </div>
+                <div>
+                    <label class="text-xs">المقاس</label>
+                    <select id="ord-size-select" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600"></select>
+                </div>
+                <div>
+                    <label class="text-xs">الكمية</label>
+                    <input type="number" id="ord-qty" value="1" min="1" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
+                </div>
+                <div>
+                    <label class="text-xs">سعر البيع</label>
+                    <input type="number" id="ord-price" min="0" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600" placeholder="0">
+                </div>
+            </div>
+            <button onclick="MOD.addItem()" class="mt-3 bg-indigo-600 text-white px-3 py-1 rounded text-sm">+ إضافة للمشتريات</button>
+        </div>
+        <!-- Cart -->
+        <div class="bg-white dark:bg-gray-800 border rounded p-4">
+            <table class="w-full text-sm">
+                <thead><tr class="border-b"><th class="text-right">المنتج</th><th>التفاصيل</th><th>الكمية</th><th>السعر</th><th>حذف</th></tr></thead>
+                <tbody id="order-cart-body"></tbody>
+            </table>
+            <div class="mt-4 flex justify-between items-center pt-4 border-t">
+                <div><label class="block text-xs">خصم (ج.م)</label><input type="number" id="ord-discount" value="0" class="w-24 border rounded p-1 dark:bg-gray-700 dark:border-gray-600" onchange="MOD.calcTotal()"></div>
+                <div class="text-left"><span class="text-gray-500">الإجمالي: </span><span class="text-xl font-bold text-brand-600" id="ord-total-display">0 ج.م</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
+        <button onclick="document.getElementById('orderModal').classList.add('hidden')" class="px-4 py-2 text-gray-500">إلغاء</button>
+        <button onclick="MOD.saveOrder()" class="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700">تأكيد الطلب</button>
+    </div>
+</div>
+</div>
+
+<!-- INVENTORY DETAIL MODAL -->
+<div id="invDetailModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center p-4">
+<div class="bg-white dark:bg-gray-800 rounded-xl w-full max-w-3xl max-h-[85vh] overflow-y-auto">
+    <div class="p-5 border-b border-gray-200 dark:border-gray-700 flex justify-between">
+        <h3 class="font-bold text-lg" id="inv-detail-title">تفاصيل المخزون</h3>
+        <button onclick="document.getElementById('invDetailModal').classList.add('hidden')" class="text-gray-500"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="p-5">
+        <div class="overflow-x-auto"><table class="w-full text-sm text-right" id="inv-detail-table"><thead></thead><tbody></tbody></table></div>
+    </div>
+</div>
+</div>
+
+<!-- ORDER VIEW MODAL -->
+<div id="orderViewModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center p-4">
+<div class="bg-white dark:bg-gray-800 rounded-xl w-full max-w-xl max-h-[85vh] overflow-y-auto">
+    <div class="p-5 border-b border-gray-200 dark:border-gray-700 flex justify-between">
+        <h3 class="font-bold text-lg">تفاصيل الطلب</h3>
+        <button onclick="document.getElementById('orderViewModal').classList.add('hidden')" class="text-gray-500"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="p-5" id="order-view-content"></div>
+</div>
+</div>
+
+<!-- ALL SCRIPTS -->
+<script>
+// 🔐 AUTH GUARD — Firebase Auth (see DOMContentLoaded below)
+document.body.style.visibility = 'hidden'; // Hidden until auth confirmed
+
+// ── Theme loader ────────────────────────────────────────
+(function() {
+    const t = localStorage.getItem('shaker_theme');
+    if (t === 'light') document.documentElement.classList.remove('dark');
+    else document.documentElement.classList.add('dark');
+})();
+
+function toggleTheme() {
+    const isDark = document.documentElement.classList.toggle('dark');
+    localStorage.setItem('shaker_theme', isDark ? 'dark' : 'light');
+}
+
+async function doLogout() {
+    sessionStorage.removeItem('shaker_mod_session');
+    try { await FB.logout(); } catch(e) {}
+    window.location.href = 'Moderator_login.html';
+}
+
+// ── Current user ──────────────────────────────────────
+// FIX #7: let (not const) so Auth.guardPage can assign it
+let CURRENT_USER = {};
+
+// FIX #9: Toast module loaded from js/ui.js — inline Toast removed to prevent conflict
+
+// ── Firebase ─────────────────────────────────────────────
+// Firebase config loaded from js/firebase.js
+
+
+// Firebase initialized via FB module (js/firebase.js)
+
+// FIX #8: Store module loaded from js/store.js — inline Store removed to prevent conflict
+// Store.getNextBill replaced by async Store.getNextBillNumber()
+
+// FIX #12: genId uses Store.genId() (timestamp+random — collision resistant)
+const genId = () => Store.genId();
+const fmtCur = (n) => new Intl.NumberFormat('ar-EG', {style:'currency',currency:'EGP'}).format(n || 0);
+const fmtDate = (ts) => new Date(ts).toLocaleDateString('ar-EG');
+
+const STATUS_LABELS = { Pending:'قيد الانتظار', Confirmed:'مؤكد', Shipped:'تم الشحن', Delivered:'تم التسليم', Cancelled:'ملغي', Returned:'مرتجع' };
+const STATUS_CLASSES = { Pending:'badge-pending', Confirmed:'badge-confirmed', Shipped:'badge-shipped', Delivered:'badge-delivered', Cancelled:'badge-cancelled', Returned:'badge-returned' };
+
+// pullFromFirebase: removed dead wrapper — Store.syncAll() called directly
+
+// ── Navigation ────────────────────────────────────────────
+function modNav(sec) {
+    document.querySelectorAll('section[id^="sec-"]').forEach(el => el.classList.add('hidden'));
+    document.getElementById('sec-' + sec)?.classList.remove('hidden');
+    document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
+    if (sec === 'dashboard') MOD.renderDashboard();
+    if (sec === 'orders')    MOD.renderOrders();
+    if (sec === 'inventory') MOD.renderInventory();
+    if (sec === 'chat')      ModChat.open();
+}
+
+// ══════════════════════════════════════════════════════════
+// 📋 MODERATOR PANEL LOGIC
+// ══════════════════════════════════════════════════════════
+const MOD = {
+    cartItems: [],
+
+    myOrders() {
+        // FIX #14: Filter by uid (not name) — cannot be spoofed
+        // SECURITY: filter by uid AND name (double check)
+        const all = Store.get('orders');
+        return all.filter(o => o.moderatorUid === CURRENT_USER.uid || o.moderatorName === CURRENT_USER.username);
+    },
+
+    // ─── Dashboard ───────────────────────────────────────
+    renderDashboard() {
+        const orders = MOD.myOrders();
+        document.getElementById('mod-dash-total').textContent = orders.length;
+        document.getElementById('mod-dash-confirmed').textContent = orders.filter(o => ['Confirmed','Shipped','Delivered'].includes(o.status)).length;
+        document.getElementById('mod-dash-pending').textContent = orders.filter(o => o.status === 'Pending').length;
+        const recent = [...orders].sort((a,b)=>b.date-a.date).slice(0,5);
+        document.getElementById('mod-dash-recent').innerHTML = recent.length === 0 ?
+            '<tr><td colspan="5" class="p-4 text-center text-gray-400">لا توجد طلبات بعد</td></tr>' :
+            recent.map(o => `<tr class="border-b dark:border-gray-700">
+                <td class="p-3 font-mono text-xs">${Sanitize.html(String(o.billNumber||''))}</td>
+                <td class="p-3 font-bold">${Sanitize.html(o.customer||'')}</td>
+                <td class="p-3"><span class="status-badge ${STATUS_CLASSES[o.status]}">${STATUS_LABELS[o.status]||o.status}</span></td>
+                <td class="p-3">${fmtCur(o.total)}</td>
+                <td class="p-3 text-xs text-gray-500">${fmtDate(o.date)}</td>
+            </tr>`).join('');
+    },
+
+    // ─── Orders ──────────────────────────────────────────
+    _currentOrders: null,
+    renderOrders(list) {
+        const orders = (list || MOD.myOrders()).sort((a,b)=>b.date-a.date);
+        MOD._currentOrders = list;
+        const tbody = document.getElementById('mod-orders-body');
+        tbody.innerHTML = orders.length === 0 ?
+            '<tr><td colspan="7" class="p-6 text-center text-gray-400">لا توجد طلبات</td></tr>' :
+            orders.map(o => `<tr class="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-750">
+                <td class="p-3 font-mono text-xs">${Sanitize.html(String(o.billNumber||''))}</td>
+                <td class="p-3 font-bold">${Sanitize.html(o.customer||'')}</td>
+                <td class="p-3 text-sm">${Sanitize.html(o.phone||'')}</td>
+                <td class="p-3 text-xs text-gray-500">${fmtDate(o.date)}</td>
+                <td class="p-3"><span class="status-badge ${STATUS_CLASSES[o.status]}">${STATUS_LABELS[o.status]||o.status}</span></td>
+                <td class="p-3 font-bold">${fmtCur(o.total)}</td>
+                <td class="p-3 flex gap-1 flex-wrap">
+                    <button onclick="MOD.viewOrder('${o.id}')" class="text-blue-600 hover:bg-blue-100 px-2 py-1 rounded text-xs"><i class="fas fa-eye"></i></button>
+                    ${o.status === 'Pending' ? `<button onclick="MOD.editOrder('${o.id}')" class="text-yellow-600 hover:bg-yellow-100 px-2 py-1 rounded text-xs"><i class="fas fa-edit"></i></button>` : ''}
+                    <button onclick="MOD.copyOrder('${o.id}')" class="text-gray-600 hover:bg-gray-100 px-2 py-1 rounded text-xs"><i class="fas fa-copy"></i></button>
+                </td>
+            </tr>`).join('');
+    },
+
+    searchOrders() {
+        const customer = document.getElementById('mod-search-customer').value.toLowerCase().trim();
+        const status = document.getElementById('mod-search-status').value;
+        let orders = MOD.myOrders();
+        if (customer) orders = orders.filter(o => o.customer?.toLowerCase().includes(customer) || o.phone?.includes(customer));
+        if (status) orders = orders.filter(o => o.status === status);
+        MOD.renderOrders(orders);
+    },
+
+    clearSearch() {
+        document.getElementById('mod-search-customer').value = '';
+        document.getElementById('mod-search-status').value = '';
+        MOD.renderOrders();
+    },
+
+    viewOrder(id) {
+        const o = Store.get('orders').find(x=>x.id===id);
+        if (!o) return;
+        // Sanitize all user data before displaying
+        const _S = Sanitize.html;
+        document.getElementById('order-view-content').innerHTML = `
+            <div class="space-y-3 text-sm">
+                <div class="grid grid-cols-2 gap-2">
+                    <div><span class="text-gray-500">البوليصة:</span> <span class="font-mono font-bold">${_S(String(o.billNumber||''))}</span></div>
+                    <div><span class="text-gray-500">التاريخ:</span> ${fmtDate(o.date)}</div>
+                    <div><span class="text-gray-500">العميل:</span> <span class="font-bold">${_S(o.customer||'')}</span></div>
+                    <div><span class="text-gray-500">الهاتف:</span> ${_S(o.phone||'')}</div>
+                    <div class="col-span-2"><span class="text-gray-500">العنوان:</span> ${_S(o.address||'-')}</div>
+                    <div class="col-span-2"><span class="text-gray-500">الحالة:</span> <span class="status-badge ${STATUS_CLASSES[o.status]||''}">${STATUS_LABELS[o.status]||_S(o.status||'')}</span></div>
+                </div>
+                <hr class="dark:border-gray-700">
+                <h4 class="font-bold">المنتجات</h4>
+                ${(o.items||[]).map(item=>`
+                    <div class="flex justify-between bg-gray-50 dark:bg-gray-700 rounded p-2">
+                        <span>${_S(item.productName||'')} — ${_S(item.color||'')}/${_S(String(item.size||''))}</span>
+                        <span class="font-bold">${_S(String(item.qty||1))} × ${_S(String(item.price||0))} ج.م</span>
+                    </div>`).join('')}
+                <div class="flex justify-between font-bold text-lg pt-2 border-t dark:border-gray-700">
+                    <span>الإجمالي</span><span class="text-indigo-600">${fmtCur(o.total)}</span>
+                </div>
+                ${o.note ? `<div class="bg-yellow-50 dark:bg-yellow-900/20 rounded p-2 text-xs text-yellow-700 dark:text-yellow-400">ملاحظة: ${_S(o.note)}</div>` : ''}
+            </div>`;
+        document.getElementById('orderViewModal').classList.remove('hidden');
+    },
+
+    copyOrder(id) {
+        const o = Store.get('orders').find(x=>x.id===id);
+        if (!o) return;
+        const items = (o.items||[]).map(i=>`${i.qty}x ${i.productName} (${i.color}/${i.size})`).join('\n');
+        const text = `طلب من SHAKER\n\nالعميل: ${Sanitize.html(o.customer||'')}\nالهاتف: ${Sanitize.html(o.phone||'')}\nالعنوان: ${o.address||'-'}\n\nالمنتجات:\n${items}\n\nالإجمالي: ${fmtCur(o.total)} ج.م\n${o.note?'ملاحظة: '+o.note:''}`;
+        if (navigator.clipboard) navigator.clipboard.writeText(text).then(()=>Toast.show('تم نسخ الطلب','success')).catch(()=>Toast.show('فشل النسخ','error'));
+    },
+
+    // ─── New / Edit Order ────────────────────────────────
+    openNewOrder() {
+        MOD.cartItems = [];
+        document.getElementById('ord-id').value = '';
+        document.getElementById('ord-customer').value = '';
+        document.getElementById('ord-phone').value = '';
+        document.getElementById('ord-address').value = '';
+        document.getElementById('ord-note').value = '';
+        document.getElementById('ord-discount').value = '0';
+        document.getElementById('order-modal-title').textContent = 'طلب جديد';
+        MOD.populateModalSelects();
+        MOD.renderCart();
+        document.getElementById('orderModal').classList.remove('hidden');
+    },
+
+    editOrder(id) {
+        const o = Store.get('orders').find(x=>x.id===id);
+        if (!o || (o.moderatorUid !== CURRENT_USER.uid && o.moderatorName !== CURRENT_USER.username)) return; // FIX #14
+        document.getElementById('ord-id').value = o.id;
+        document.getElementById('ord-customer').value = o.customer;
+        document.getElementById('ord-phone').value = o.phone;
+        document.getElementById('ord-address').value = o.address||'';
+        document.getElementById('ord-note').value = o.note||'';
+        document.getElementById('ord-discount').value = o.discount||0;
+        document.getElementById('order-modal-title').textContent = 'تعديل الطلب';
+        MOD.cartItems = (o.items||[]).map(i=>({...i}));
+        MOD.populateModalSelects();
+        MOD.renderCart();
+        setTimeout(()=>{
+            document.getElementById('ord-marketer').value = o.marketerId||'';
+            document.getElementById('ord-shipping').value = o.shippingId||'';
+            document.getElementById('ord-shipping-payer').value = o.shippingPayer||'customer';
+        }, 50);
+        document.getElementById('orderModal').classList.remove('hidden');
+    },
+
+    populateModalSelects() {
+        const products = Store.get('products');
+        const marketers = [{ id:'shaker_fixed', name:'SHAKER' }, ...Store.get('marketers')];
+        const shipping = Store.get('shipping');
+        document.getElementById('ord-prod-select').innerHTML = '<option value="">اختر موديل...</option>' + products.map(p=>`<option value="${p.id}">${Sanitize.html(p.category||'')} (#${Sanitize.html(p.modelNo||'')})</option>`).join('');
+        document.getElementById('ord-marketer').innerHTML = '<option value="">اختر المسوق...</option>' + marketers.map(m=>`<option value="${m.id}">${m.name}</option>`).join('');
+        document.getElementById('ord-shipping').innerHTML = '<option value="">شركة الشحن...</option>' + shipping.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+    },
+
+    onProductChange() {
+        const prodId = document.getElementById('ord-prod-select').value;
+        const products = Store.get('products');
+        const inventory = Store.get('inventory');
+        const p = products.find(x=>x.id===prodId);
+        if (!p) return;
+        document.getElementById('ord-color-select').innerHTML = p.colors.map(c=>`<option value="${c}">${c}</option>`).join('');
+        document.getElementById('ord-size-select').innerHTML = p.sizes.map(s=>`<option value="${s}">${s}</option>`).join('');
+        document.getElementById('ord-price').value = p.price || '';
+    },
+
+    addItem() {
+        const prodId = document.getElementById('ord-prod-select').value;
+        const color  = document.getElementById('ord-color-select').value;
+        const size   = document.getElementById('ord-size-select').value;
+        const qty    = parseInt(document.getElementById('ord-qty').value);
+        const price  = parseFloat(document.getElementById('ord-price').value);
+        if (!prodId||!color||!size||!qty||!price) { Toast.show('يرجى اختيار منتج وتعبئة الحقول','error'); return; }
+        const product = Store.get('products').find(p=>p.id===prodId);
+        if (!product) return;
+        const inv = Store.get('inventory').find(i=>i.productId===prodId&&i.color===color&&String(i.size)===String(size));
+        if (!inv||inv.stock<qty) { Toast.show(`المخزون المتاح: ${inv?inv.stock:0} فقط`,'error'); return; }
+        MOD.cartItems.push({ productId:prodId, productName:`${product.category} (#${product.modelNo})`, color, size, qty, price, cost:product.cost });
+        MOD.renderCart();
+    },
+
+    renderCart() {
+        document.getElementById('order-cart-body').innerHTML = MOD.cartItems.map((item,idx)=>`
+            <tr class="border-b dark:border-gray-700">
+                <td class="p-2">${Sanitize.html(item.productName||'')}</td>
+                <td class="p-2 text-xs">${Sanitize.html(item.color||'')}/${item.size}</td>
+                <td class="p-2">${parseInt(item.qty||0)}</td>
+                <td class="p-2">${item.price*item.qty} ج.م</td>
+                <td class="p-2 text-red-500 cursor-pointer" onclick="MOD.removeItem(${idx})"><i class="fas fa-trash"></i></td>
+            </tr>`).join('');
+        MOD.calcTotal();
+    },
+
+    removeItem(idx) { MOD.cartItems.splice(idx,1); MOD.renderCart(); },
+
+    calcTotal() {
+        const sub = MOD.cartItems.reduce((s,i)=>s+(i.price*i.qty),0);
+        const disc = parseFloat(document.getElementById('ord-discount').value)||0;
+        const total = sub - disc;
+        document.getElementById('ord-total-display').textContent = fmtCur(total);
+        return { sub, disc, total };
+    },
+
+    async saveOrder() {
+        if (MOD.cartItems.length === 0) { Toast.show('السلة فارغة','error'); return; }
+        const customer = document.getElementById('ord-customer').value.trim();
+        const phone    = document.getElementById('ord-phone').value.trim();
+        if (!customer || !phone) { Toast.show('يرجى إدخال اسم العميل والهاتف','error'); return; }
+        const { sub, disc, total } = MOD.calcTotal();
+        const totalCost = MOD.cartItems.reduce((s,i)=>s+(i.cost*i.qty),0);
+        const profit = total - totalCost;
+        const orderId = document.getElementById('ord-id').value;
+        const savedItems = MOD.cartItems.map(i=>({...i}));
+        if (orderId) {
+            await Store.update('orders', orderId, {
+                customer, phone,
+                address:  document.getElementById('ord-address').value,
+                marketerId: document.getElementById('ord-marketer').value,
+                shippingId: document.getElementById('ord-shipping').value,
+                shippingPayer: document.getElementById('ord-shipping-payer').value,
+                note:     document.getElementById('ord-note').value,
+                items:    savedItems,
+                discount: disc,
+                total,
+                profit
+            });
+            Toast.show('تم تعديل الطلب بنجاح','success');
+        } else {
+            const bill = await Store.getNextBillNumber(); // FIX #13: atomic Firebase transaction
+            await Store.add('orders', {
+                id: genId(),
+                billNumber: bill,
+                customer, phone,
+                address:  document.getElementById('ord-address').value,
+                marketerId: document.getElementById('ord-marketer').value,
+                shippingId: document.getElementById('ord-shipping').value,
+                shippingPayer: document.getElementById('ord-shipping-payer').value,
+                note:     document.getElementById('ord-note').value,
+                items:    savedItems,
+                discount: disc,
+                total,
+                profit,
+                status: 'Pending',
+                date: Date.now(),
+                createdAt: Date.now(),
+                stockUpdated: false,
+                moderatorName: CURRENT_USER.username,
+                moderatorUid: CURRENT_USER.uid
+            });
+            Toast.show(`تم إنشاء الطلب رقم: ${bill}`,'success');
+        }
+        MOD.cartItems = [];
+        document.getElementById('orderModal').classList.add('hidden');
+        MOD.renderOrders();
+        MOD.renderDashboard();
+    },
+
+    // ─── Inventory (view only) ───────────────────────────
+    renderInventory(filter) {
+        const products = Store.get('products');
+        const inventory = Store.get('inventory');
+        const list = document.getElementById('mod-inventory-list');
+        list.innerHTML = '';
+        const search = (filter || document.getElementById('mod-inv-search').value || '').toLowerCase().trim();
+        const visible = products.filter(p => !search || p.category.toLowerCase().includes(search) || p.modelNo.toLowerCase().includes(search));
+        if (visible.length === 0) {
+            list.innerHTML = '<div class="col-span-3 text-center text-gray-400 py-12"><i class="fas fa-box-open text-4xl mb-3 block"></i>لا توجد منتجات</div>';
+            return;
+        }
+        visible.forEach(p => {
+            const invItems = inventory.filter(i=>i.productId===p.id);
+            const totalPcs = invItems.reduce((s,i)=>s+i.stock,0);
+            const hasOut = invItems.some(i=>i.stock===0);
+            const imgSrc = p.imageUrl || p.image || null;
+            const card = document.createElement('div');
+            card.className = `bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden ${hasOut?'border-2 border-red-300':'border border-gray-200 dark:border-gray-700'}`;
+            card.innerHTML = `
+                ${imgSrc ? `<img src="${imgSrc}" alt="${Sanitize.html(p.category||'')}" class="w-full h-32 object-cover">` : '<div class="w-full h-20 bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-300"><i class="fas fa-image text-3xl"></i></div>'}
+                <div class="p-4">
+                <div class="flex justify-between items-start mb-2">
+                    <div>
+                        <h3 class="font-bold">${Sanitize.html(p.category||'')} (#${Sanitize.html(p.modelNo||'')})</h3>
+                        <p class="text-xs text-gray-500">المقاسات: ${p.sizes.join(', ')}</p>
+                    </div>
+                    <span class="text-indigo-600 font-bold">${parseFloat(p.price||0)} ج.م</span>
+                </div>
+                ${hasOut?'<span class="text-xs bg-red-100 text-red-600 px-2 py-1 rounded">⚠️ بعض الأصناف نفدت</span>':''}
+                <div class="mt-3 flex justify-between items-center">
+                    <span class="text-sm text-gray-500">المتاح: <b class="text-gray-800 dark:text-white">${totalPcs}</b> قطعة</span>
+                    <button onclick="MOD.showInvDetail('${p.id}')" class="bg-indigo-600 text-white px-3 py-1 rounded text-sm">التفاصيل</button>
+                </div>
+                </div>`;
+            list.appendChild(card);
+        });
+    },
+
+    filterInventory() { MOD.renderInventory(); },
+
+    showInvDetail(productId) {
+        const p = Store.get('products').find(x=>x.id===productId);
+        if (!p) return;
+        const inv = Store.get('inventory').filter(i=>i.productId===productId);
+        const thead = document.querySelector('#inv-detail-table thead');
+        const tbody = document.querySelector('#inv-detail-table tbody');
+        document.getElementById('inv-detail-title').textContent = `${Sanitize.html(p.category||'')} (#${Sanitize.html(p.modelNo||'')}) - تفاصيل المخزون`;
+        thead.innerHTML = `<tr class="bg-gray-100 dark:bg-gray-700"><th class="p-2 text-right">اللون</th>${p.sizes.map(s=>`<th class="p-2 text-center">${s}</th>`).join('')}<th class="p-2 text-center">المجموع</th></tr>`;
+        tbody.innerHTML = p.colors.map(color => {
+            let total = 0;
+            const cells = p.sizes.map(size => {
+                const item = inv.find(i=>i.color===color&&String(i.size)===String(size));
+                const qty = item?item.stock:0;
+                total += qty;
+                return `<td class="p-2 text-center ${qty===0?'bg-red-100 dark:bg-red-900/40 text-red-600 font-bold':''}">${qty===0?'✗':qty}</td>`;
+            }).join('');
+            return `<tr class="border-b dark:border-gray-700"><td class="p-2 font-bold">${Sanitize.html(color||'')}</td>${cells}<td class="p-2 text-center font-bold">${total}</td></tr>`;
+        }).join('');
+        document.getElementById('invDetailModal').classList.remove('hidden');
+    }
+};
+
+// ══════════════════════════════════════════════════════════
+// 💬 MODERATOR CHAT
+// ══════════════════════════════════════════════════════════
+const ModChat = {
+    _listener: null,
+
+    open() {
+        if (!FB.isOk()) {
+            document.getElementById('mod-chat-messages').innerHTML = '<div class="text-center text-gray-400 py-8">Firebase غير متصل</div>';
+            document.getElementById('chat-status-line').textContent = 'غير متصل';
+            return;
+        }
+        document.getElementById('chat-status-line').textContent = 'متصل';
+        if (ModChat._listener) ModChat._listener();
+        // FIX: use uid as chat path
+        const ref = FB.getDb().ref('shaker/chats/' + CURRENT_USER.uid);
+        ModChat._listener = ref.on('value', snap => {
+            const msgs = [];
+            if (snap.exists()) snap.forEach(child => msgs.push({ id:child.key, ...child.val() }));
+            msgs.sort((a,b)=>a.time-b.time);
+            const container = document.getElementById('mod-chat-messages');
+            if (!container) return;
+            // Clear unread badge
+            document.getElementById('chat-badge').classList.add('hidden');
+            container.innerHTML = msgs.length === 0 ?
+                '<div class="text-center text-gray-400 py-8"><i class="fas fa-comment-slash text-4xl mb-3 block"></i>لا توجد رسائل بعد</div>' :
+                msgs.map(m => {
+                    const safeText = Sanitize.html(m.text || ''); // FIX #15: XSS-safe
+                    const time = new Date(m.time).toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'});
+                    const isAdmin = m.sender === 'admin';
+                    return `<div class="flex ${isAdmin?'justify-start':'justify-end'}">
+                        <div class="max-w-xs px-4 py-2 text-sm ${isAdmin?'chat-bubble-admin':'chat-bubble-me'}">
+                            <div>${safeText}</div>
+                            <div class="text-xs opacity-60 mt-1">${time}</div>
+                        </div>
+                    </div>`;
+                }).join('');
+            container.scrollTop = container.scrollHeight;
+        });
+    },
+
+    send() {
+        if (!FB.isOk()) return;
+        const input = document.getElementById('mod-chat-input');
+        const text = input.value.trim();
+        if (!text) return;
+        input.value = '';
+        // FIX: use uid as chat key (safe for special chars)
+        FB.getDb().ref('shaker/chats/' + CURRENT_USER.uid).push({ sender: CURRENT_USER.username, text, time: Date.now() });
+    }
+};
+
+// ── Watch for new admin messages (badge on chat nav) ──────
+function watchNewMessages() {
+    if (!FB.isOk() || !CURRENT_USER.username) return;
+    // FIX: uid-based chat path
+    FB.getDb().ref('shaker/chats/' + CURRENT_USER.uid).on('value', snap => {
+        if (!snap.exists()) return;
+        const msgs = [];
+        snap.forEach(c => msgs.push(c.val()));
+        const lastAdmin = msgs.filter(m=>m.sender==='admin').sort((a,b)=>b.time-a.time)[0];
+        if (!lastAdmin) return;
+        const lastSeen = parseInt(localStorage.getItem('shaker_chat_last_seen_' + CURRENT_USER.uid) || '0');
+        const chatSection = document.getElementById('sec-chat');
+        const isOpen = chatSection && !chatSection.classList.contains('hidden');
+        if (lastAdmin.time > lastSeen && !isOpen) {
+            document.getElementById('chat-badge').classList.remove('hidden');
+        }
+        if (isOpen) {
+            localStorage.setItem('shaker_chat_last_seen_' + CURRENT_USER.uid, Date.now());
+            document.getElementById('chat-badge').classList.add('hidden');
+        }
+    });
+}
+
+// ══════════════════════════════════════════════════════════
+// 🚀 INIT
+// ══════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', async () => {
+    FB.init();
+
+    // ── PRIMARY: Firebase Auth guard (most secure) ──
+    // ── FALLBACK: sessionStorage for quick page loads ──
+    const raw = sessionStorage.getItem('shaker_mod_session');
+    const session = raw ? JSON.parse(raw) : null;
+
+    // Show page temporarily while we verify auth
+    if (session && session.loginTime && Date.now() - session.loginTime < 12 * 3600 * 1000) {
+        CURRENT_USER.uid         = session.uid || '';
+        CURRENT_USER.username    = session.username || '';
+        CURRENT_USER.displayName = session.displayName || session.username || 'مشرف';
+        CURRENT_USER.role        = 'moderator';
+    }
+
+    // Firebase Auth verification (authoritative)
+    await new Promise(resolve => {
+        const auth = FB.getAuth();
+        if (!auth) { resolve(); return; }
+        const timeoutId = setTimeout(() => {
+            // No auth response after 8s — use session if valid
+            if (!session) { window.location.href = 'Moderator_login.html'; return; }
+            resolve();
+        }, 8000);
+        auth.onAuthStateChanged(async user => {
+            clearTimeout(timeoutId);
+            if (!user) {
+                // Not logged in with Firebase Auth
+                if (!session || Date.now() - (session.loginTime||0) > 3600000) {
+                    // Session also expired
+                    sessionStorage.removeItem('shaker_mod_session');
+                    window.location.href = 'Moderator_login.html';
+                    return;
+                }
+                // Session still fresh (< 1h) — allow but flag
+                resolve(); return;
+            }
+            // Verify role in DB
+            try {
+                const snap = await FB.getDb().ref('shaker/users/' + user.uid).once('value');
+                if (!snap.exists() || snap.val().role !== 'moderator' || snap.val().active === false) {
+                    await auth.signOut();
+                    sessionStorage.removeItem('shaker_mod_session');
+                    window.location.href = 'Moderator_login.html';
+                    return;
+                }
+                const d = snap.val();
+                // Update CURRENT_USER and session with authoritative data
+                CURRENT_USER.uid         = user.uid;
+                CURRENT_USER.username    = d.username || d.displayName || user.email?.replace('@shaker.mod','') || '';
+                CURRENT_USER.displayName = d.displayName || d.username || CURRENT_USER.username;
+                CURRENT_USER.role        = 'moderator';
+                // Refresh session
+                sessionStorage.setItem('shaker_mod_session', JSON.stringify({
+                    uid: user.uid, username: CURRENT_USER.username,
+                    displayName: CURRENT_USER.displayName, role: 'moderator',
+                    loginTime: Date.now()
+                }));
+            } catch(e) { console.warn('DB check error:', e.message); }
+            resolve();
+        });
+    });
+
+    if (!CURRENT_USER.uid && !CURRENT_USER.username) {
+        window.location.href = 'Moderator_login.html'; return;
+    }
+
+    const userInfoEl = document.getElementById('mod-user-info');
+    if (userInfoEl) userInfoEl.textContent = '👤 ' + (CURRENT_USER.displayName || CURRENT_USER.username);
+    document.body.style.visibility = 'visible';
+
+    // Sync data from Firebase (targeted reads)
+    await Store.syncAll();
+
+    // Start real-time sync
+    if (FB.isOk()) {
+        // Targeted listener — only listen to orders and inventory
+        FB.listenCollection('orders', data => {
+            localStorage.setItem('shaker_orders', JSON.stringify(data));
+            // Re-render current section
+            const sections = ['dashboard','orders','inventory'];
+            sections.forEach(s => {
+                const el = document.getElementById('sec-'+s);
+                if (el && !el.classList.contains('hidden')) {
+                    if (s==='dashboard') MOD.renderDashboard();
+                    if (s==='orders')    MOD.renderOrders(MOD._currentOrders);
+                    if (s==='inventory') MOD.renderInventory();
+                }
+            });
+        });
+        watchNewMessages();
+    }
+
+    // Remove loading overlay
+    const _ldr = document.getElementById('_mod_init_loader');
+    if (_ldr) _ldr.remove();
+
+    // Default section
+    modNav('dashboard');
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://cdnjs.cloudflare.com https://fonts.googleapis.com https://fonts.gstatic.com https://www.gstatic.com https://shaker-b307b-default-rtdb.firebaseio.com wss://shaker-b307b-default-rtdb.firebaseio.com https://identitytoolkit.googleapis.com data: 'unsafe-inline'; script-src 'self' https://cdnjs.cloudflare.com https://www.gstatic.com 'unsafe-inline'; img-src * data:; connect-src 'self' https: wss:;">
+<title>SHAKER - تسجيل الدخول</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="js/firebase.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/ui.js"></script>
+<style>*{margin:0;padding:0;box-sizing:border-box;font-family:'Tajawal',sans-serif;}
+body{background:linear-gradient(135deg,#1a1a1a,#2c1b10);min-height:100vh;display:flex;}
+.wrap{display:flex;width:100%;min-height:100vh;}
+.left{flex:1;background:linear-gradient(135deg,#0d0d0d,#1a0f06);display:flex;justify-content:center;align-items:center;position:relative;overflow:hidden;}
+.left::before{content:"";position:absolute;width:400px;height:400px;background:radial-gradient(circle,rgba(189,150,87,.2),transparent 70%);border-radius:50%;}
+.logo-box{position:relative;z-index:2;text-align:center;}
+.logo-img{width:300px;filter:drop-shadow(0 0 20px rgba(189,150,87,.5));}
+.right{flex:1;background:#0f0f0f;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:2rem;}
+.card{background:rgba(25,25,25,.95);backdrop-filter:blur(10px);border-radius:20px;padding:2.5rem;width:100%;max-width:420px;border:1px solid rgba(189,150,87,.2);}
+.t1{font-size:2.5rem;font-weight:800;color:#bd9657;text-align:center;margin-bottom:.3rem;text-shadow:0 0 15px rgba(189,150,87,.7);}
+.sub{color:#888;text-align:center;margin-bottom:2rem;font-size:.95rem;}
+.f{margin-bottom:1.4rem;}
+.f label{display:block;margin-bottom:.5rem;color:#bd9657;font-weight:600;}
+.iw{position:relative;}
+.f input{width:100%;padding:.9rem 1.2rem;background:rgba(30,30,30,.9);border:1px solid rgba(189,150,87,.3);border-radius:12px;color:#fff;font-size:1rem;font-family:'Tajawal',sans-serif;transition:border-color .3s;}
+.f input:focus{outline:none;border-color:#bd9657;box-shadow:0 0 0 3px rgba(189,150,87,.15);}
+.eye{position:absolute;left:.9rem;top:50%;transform:translateY(-50%);background:none;border:none;color:#666;cursor:pointer;font-size:.95rem;}
+.eye:hover{color:#bd9657;}
+.btn{width:100%;padding:1rem;background:linear-gradient(135deg,#bd9657,#a67c47);border:none;border-radius:12px;color:#000;font-size:1.1rem;font-weight:700;cursor:pointer;font-family:'Tajawal',sans-serif;display:flex;align-items:center;justify-content:center;gap:.5rem;transition:all .3s;}
+.btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 6px 20px rgba(189,150,87,.5);}
+.btn:disabled{opacity:.6;cursor:not-allowed;transform:none;}
+.err{border:1px solid rgba(239,68,68,.4);background:rgba(239,68,68,.15);color:#fca5a5;border-radius:10px;padding:.75rem;text-align:center;margin-top:1rem;display:none;font-size:.9rem;line-height:1.5;}
+.fb-st{text-align:center;margin-top:.8rem;font-size:.8rem;color:#555;}
+.fb-st.ok{color:#4ade80;} .fb-st.err{color:#f87171;}
+.bl{text-align:center;margin-top:1.5rem;}
+.bl a{color:#6b7280;font-size:.9rem;text-decoration:none;}
+.bl a:hover{color:#bd9657;}
+#toast-container{position:fixed;bottom:1rem;left:1rem;z-index:9999;display:flex;flex-direction:column;gap:.5rem;}
+@media(max-width:900px){.wrap{flex-direction:column;}.left{min-height:35vh;}.logo-img{width:200px;}}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-7px)}75%{transform:translateX(7px)}}
+.shake{animation:shake .35s ease;}
+@keyframes slideInLeft{from{transform:translateX(-100%);opacity:0}to{transform:translateX(0);opacity:1}}</style>
+</head>
+<body>
+<div id="toast-container"></div>
+<div class="wrap">
+  <div class="left">
+    <div class="logo-box">
+      <img src="assets/images/logo.png" alt="SHAKER" class="logo-img" onerror="this.style.display='none'">
+      <h1 style="color:#bd9657;font-size:4rem;font-weight:900;margin-top:.5rem;text-shadow:0 0 30px rgba(189,150,87,.8);">SHAKER</h1>
+    </div>
+  </div>
+  <div class="right">
+    <div class="card">
+      <h1 class="t1">SHAKER</h1>
+      <p class="sub">نظام إدارة المبيعات والمخزون</p>
+      <div class="f">
+        <label for="inp-email">البريد الإلكتروني</label>
+        <div class="iw">
+          <input type="email" autofocus id="inp-email" placeholder="admin@example.com" autocomplete="email"
+                 onkeydown="if(event.key==='Enter')document.getElementById('inp-pass').focus()">
+        </div>
+      </div>
+      <div class="f">
+        <label for="inp-pass">كلمة المرور</label>
+        <div class="iw">
+          <input type="password" id="inp-pass" placeholder="كلمة المرور" autocomplete="current-password"
+                 onkeydown="if(event.key==='Enter')doLogin()">
+          <button class="eye" type="button" onclick="toggleEye()" tabindex="-1" aria-label="إظهار/إخفاء كلمة المرور">
+            <i class="fas fa-eye" id="eye-ic"></i>
+          </button>
+        </div>
+      </div>
+      <button class="btn" id="login-btn" onclick="doLogin()" type="button">
+        <i class="fas fa-sign-in-alt" aria-hidden="true"></i>
+        <span id="login-btn-text">تسجيل الدخول</span>
+      </button>
+      <div class="err" id="err-box" role="alert" aria-live="polite"></div>
+      <div class="fb-st" id="fb-st">جارٍ الاتصال...</div>
+      <div class="bl">
+        <a href="Moderator_login.html" rel="noopener"><i class="fas fa-user-shield" aria-hidden="true"></i> دخول المشرفين</a>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function() {
+    // Init Firebase (singleton)
+    FB.init();
+    const _auth = FB.getAuth();
+    const _db   = FB.getDb();
+    const stEl  = document.getElementById('fb-st');
+
+    if (FB.isOk()) {
+        stEl.textContent = '🔥 متصل بـ Firebase';
+        stEl.className   = 'fb-st ok';
+    } else {
+        stEl.textContent = '⚠️ تعذر الاتصال — تحقق من الإنترنت';
+        stEl.className   = 'fb-st err';
+    }
+
+    // Auto-redirect if already signed in
+    if (_auth) {
+        _auth.onAuthStateChanged(async user => {
+            if (!user) return;
+            try {
+                const p = await FB.readUserProfile(user.uid);
+                if (p?.active === false) { await FB.logout(); return; }
+                if (p?.role === 'admin')     { window.location.href = 'index.html'; return; }
+                if (p?.role === 'moderator') { window.location.href = 'Moderator.html'; return; }
+            } catch (e) { /* stay on login */ }
+        });
+    }
+
+    function showErr(msg) {
+        const el = document.getElementById('err-box');
+        el.textContent = msg; // textContent = XSS-safe
+        el.style.display = 'block';
+        el.classList.remove('shake');
+        void el.offsetWidth;
+        el.classList.add('shake');
+    }
+
+    window.toggleEye = function() {
+        const inp = document.getElementById('inp-pass');
+        const ico = document.getElementById('eye-ic');
+        if (inp.type === 'password') { inp.type = 'text';     ico.className = 'fas fa-eye-slash'; }
+        else                         { inp.type = 'password'; ico.className = 'fas fa-eye'; }
+    };
+
+    window.doLogin = async function() {
+        if (!Throttle.check('admin_login')) return;
+        document.getElementById('err-box').style.display = 'none';
+        const email = document.getElementById('inp-email').value.trim();
+        const pass  = document.getElementById('inp-pass').value;
+        const btn   = document.getElementById('login-btn');
+        const btext = document.getElementById('login-btn-text');
+
+        if (!email || !pass) { showErr('يرجى إدخال البريد الإلكتروني وكلمة المرور'); return; }
+        if (!FB.isOk())      { showErr('Firebase غير متصل — تحقق من الإنترنت'); return; }
+
+        btn.disabled = true;
+        btext.textContent = 'جارٍ التحقق...';
+        try {
+            await Auth.loginAdmin(email, pass);
+            Throttle.clear('admin_login');
+            window.location.href = 'index.html';
+        } catch (e) {
+            Throttle.record('admin_login');
+            showErr(e.message);
+            btn.disabled = false;
+            btext.textContent = 'تسجيل الدخول';
+        }
+    };
+})();
+</script>
+</body>
+</html>
