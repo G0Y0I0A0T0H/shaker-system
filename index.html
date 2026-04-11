@@ -2,7 +2,26 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://fonts.googleapis.com https://fonts.gstatic.com https://www.gstatic.com https://api.cloudinary.com https://shaker-b307b-default-rtdb.firebaseio.com wss://shaker-b307b-default-rtdb.firebaseio.com https://identitytoolkit.googleapis.com data: 'unsafe-inline'; script-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://www.gstatic.com 'unsafe-inline' 'unsafe-eval'; img-src * data: blob:; connect-src 'self' https: wss:;">
+<!--
+  CSP (v12): tightened but pragmatic.
+  - 'unsafe-inline' (script) required by the many inline handlers in this page.
+    Removing it would require rewriting every onclick=/onchange= in the admin UI.
+  - 'unsafe-eval' required by Tailwind JIT CDN. Replace Tailwind CDN with a
+    pre-built stylesheet to drop it.
+  - connect-src locked to Firebase + Cloudinary only (was 'self' https: wss:).
+  - object/frame disabled; base-uri pinned.
+-->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://www.gstatic.com 'unsafe-inline' 'unsafe-eval';
+  style-src  'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://fonts.googleapis.com 'unsafe-inline';
+  font-src   https://fonts.gstatic.com https://cdnjs.cloudflare.com data:;
+  img-src    'self' https: data: blob:;
+  connect-src 'self' https://*.firebaseio.com wss://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://api.cloudinary.com;
+  frame-src  'none';
+  object-src 'none';
+  base-uri   'self';
+">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SHAKER - نظام إدارة المبيعات</title>
 <!-- Tailwind CSS -->
@@ -978,12 +997,16 @@ return `<div class="flex items-center border-b border-gray-100 dark:border-gray-
 openWith: async (usernameOrUid) => {
 AdminChat.currentMod = usernameOrUid;
 // Resolve uid: check local cache first, then load from DB
-let chatUid = usernameOrUid;
+let chatUid = null;
 try {
 const mods = await Auth.getModerators();
 const mod = mods.find(m => m.username === usernameOrUid || m.uid === usernameOrUid);
 if (mod && mod.uid) chatUid = mod.uid;
 } catch(_) {}
+if (!chatUid) {
+Toast.show('تعذر تحديد المشرف — تحقق من وجود الحساب', 'error');
+return;
+}
 AdminChat.currentModUid = chatUid;
 if (document.getElementById('adminchat').classList.contains('hidden')) {
 app.nav('adminchat');
@@ -1032,7 +1055,13 @@ deleteConversation: async (uidOrUsername) => {
 if (!confirm('هل تريد حذف كل رسائل هذه المحادثة؟ لا يمكن التراجع.')) return;
 if (!FB.isOk()) return;
 try {
-await FB.getDb().ref('shaker/chats/' + uidOrUsername).remove();
+// Resolve to UID strictly — never write to a username-keyed path
+let targetUid = null;
+const mods = await Auth.getModerators();
+const mod = mods.find(m => m.uid === uidOrUsername || m.username === uidOrUsername);
+if (mod && mod.uid) targetUid = mod.uid;
+if (!targetUid) { Toast.show('تعذر تحديد المشرف', 'error'); return; }
+await FB.getDb().ref('shaker/chats/' + targetUid).remove();
 const msgs = document.getElementById('admin-chat-messages');
 if (msgs) msgs.innerHTML = '<div class="text-center text-gray-400 py-8">تم حذف المحادثة</div>';
 Toast.show('تم حذف المحادثة', 'success');
@@ -1273,7 +1302,17 @@ preview.innerHTML = `<div class="text-center">
 reader.readAsDataURL(file);
 }
 // === Toast Notifications ===
-
+const Toast = {
+show: (msg, type = 'success') => {
+const colors = { success: 'bg-green-600', error: 'bg-red-600', warning: 'bg-yellow-600', info: 'bg-blue-600' };
+const container = document.getElementById('toast-container');
+const toast = document.createElement('div');
+toast.className = `toast ${colors[type]}`;
+toast.innerHTML = msg;
+container.appendChild(toast);
+setTimeout(() => { toast.style.opacity = '0'; toast.style.transform = 'translateX(-100%)'; setTimeout(() => toast.remove(), 300); }, 3000);
+}
+};
 // === Stock Alert System ===
 const StockAlerts = {
 getThreshold: () => parseInt(localStorage.getItem('shaker_stock_threshold') || '3'),
@@ -2782,51 +2821,16 @@ window.location.href = 'login.html';
 // === Initialize ===
 window.addEventListener('DOMContentLoaded', async () => {
 const splashScreen = document.getElementById('splashScreen');
-// Initialize Firebase first
+// ── Firebase + Auth Guard (v12) ──────────────────────────────
+// SECURITY: The old inline guard here contained an admin auto-creation
+// backdoor. It's been replaced with a single call to Auth.guardPage which
+// fails closed on missing profile / missing role / DB error.
 FB.init();
-// ── Firebase Auth Guard ──────────────────────────────
-if (FB.getAuth()) {
-await new Promise(resolve => {
-const unsubscribe = FB.getAuth().onAuthStateChanged(async user => {
-unsubscribe(); // Only run once
-if (!user) {
-window.location.href = 'login.html';
-return;
-}
-try {
-const snap = await FB.getDb().ref('shaker/users/' + user.uid).once('value');
-let role = null;
-if (snap.exists()) {
-role = snap.val().role;
-window._adminData = snap.val();
-const el = document.getElementById('admin-user-info');
-if (el) el.textContent = '👤 ' + (snap.val().displayName || 'Admin');
-} else {
-// No DB record yet — create it (first login after setup)
-const newAdmin = { uid: user.uid, email: user.email, role: 'admin', displayName: 'Admin', createdAt: Date.now() };
-try { await FB.getDb().ref('shaker/users/' + user.uid).update(newAdmin); } catch(e2) {}
-role = 'admin';
-window._adminData = newAdmin;
-}
-if (role !== 'admin') {
-await FB.getAuth().signOut();
-window.location.href = 'login.html';
-return;
-}
-document.body.style.visibility = 'visible';
-} catch(e) {
-console.error('[Auth] DB check failed — denying access for security:', e.message);
-// FIX #1: DB error → deny access (don't allow bypass)
-try { await FB.getAuth().signOut(); } catch(_) {}
-window.location.href = 'login.html';
-return;
-}
-resolve();
-});
-});
-} else {
-document.body.style.visibility = 'visible';
-console.warn('Firebase Auth not available');
+const { userData: _admin } = await Auth.guardPage('admin', 'login.html');
+window._adminData = _admin;
+{
+    const el = document.getElementById('admin-user-info');
+    if (el) el.textContent = '👤 ' + (_admin.displayName || 'Admin');
 }
 // 🔥 Sync data from Firebase (targeted reads — no bulk)
 if (FB.isOk()) {

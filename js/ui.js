@@ -1,8 +1,8 @@
 /**
- * ui.js — SHAKER v11
+ * ui.js — SHAKER v12
  * ═══════════════════
- * FIXES vs v10:
- *  [L1] Throttle: namespaced keys prevent cross-page collision
+ * Unchanged from v11 — no security issues in UI helpers.
+ * Throttle keys remain page-scoped to prevent cross-page collision.
  */
 
 // ══════════════════════════════════

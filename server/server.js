@@ -1,10 +1,19 @@
 /**
- * server.js — SHAKER v11
- * ══════════════════════
- * FIXES vs v10:
- *  [L1] Auto-backup interval stored → cleared on graceful shutdown
- *  [L2] Payload depth/size guard prevents JSON.stringify hang
- *  [L3] _latestData capped at 50MB to prevent excessive RAM use
+ * server.js — SHAKER v12 (production-hardened)
+ * ═════════════════════════════════════════════
+ * FIXES vs v11:
+ *  [G1] CORS: supports GitHub Pages + custom HTTPS origins via SHAKER_ORIGINS
+ *       env var (comma-separated). Localhost still allowed by default for dev.
+ *  [G2] CORS: wildcard subdomain support for github.io pages
+ *       (e.g. username.github.io), locked behind opt-in env flag
+ *       SHAKER_ALLOW_GITHUB_PAGES=1 so you only enable it knowingly.
+ *  [G3] Origin "null" (file://) still blocked — no regression.
+ *  [G4] Vary: Origin header added so caches don't mix responses.
+ *
+ * KEPT FROM v11:
+ *  [L1] Auto-backup interval cleared on graceful shutdown
+ *  [L2] Payload depth/size guard
+ *  [L3] _latestData capped at 50MB
  */
 
 'use strict';
@@ -25,36 +34,56 @@ if (!API_TOKEN || API_TOKEN.trim().length < 8) {
     console.error('║  ⛔  STARTUP BLOCKED — SHAKER_TOKEN required     ║');
     console.error('║  Linux/Mac:  SHAKER_TOKEN=secret node server.js  ║');
     console.error('║  Windows:    set SHAKER_TOKEN=secret             ║');
-    console.error('║              node server.js                       ║');
+    console.error('║              node server.js                      ║');
     console.error('║  Token must be ≥ 8 characters.                   ║');
     console.error('╚══════════════════════════════════════════════════╝\n');
     process.exit(1);
 }
 
-// ── CORS ─────────────────────────────────────────────────────────────────
-const ALLOWED_ORIGINS = new Set([
+// ── CORS CONFIG ──────────────────────────────────────────────────────────
+// Built-in localhost origins for dev
+const DEFAULT_ORIGINS = new Set([
     'http://localhost', 'http://127.0.0.1',
     `http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`,
     'http://localhost:5500', 'http://127.0.0.1:5500',
     'http://localhost:3000', 'http://localhost:8080', 'http://localhost:5173',
 ]);
 
+// FIX G1: extra origins from env (comma-separated full URLs)
+// Example: SHAKER_ORIGINS="https://shaker.example.com,https://admin.example.com"
+const EXTRA_ORIGINS = new Set(
+    (process.env.SHAKER_ORIGINS || '')
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean)
+);
+
+// FIX G2: opt-in GitHub Pages wildcard (any *.github.io)
+const ALLOW_GITHUB_PAGES = process.env.SHAKER_ALLOW_GITHUB_PAGES === '1';
+
+function isOriginAllowed(origin) {
+    if (!origin) return true;               // same-origin / curl / server-to-server
+    if (origin === 'null') return false;    // file:// — always blocked
+    if (DEFAULT_ORIGINS.has(origin)) return true;
+    if (EXTRA_ORIGINS.has(origin))   return true;
+    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
+    if (ALLOW_GITHUB_PAGES && /^https:\/\/[a-z0-9-]+\.github\.io$/i.test(origin)) return true;
+    return false;
+}
+
 app.use((req, res, next) => {
     const origin = req.headers.origin || '';
-    // Block null (file://) explicitly
     if (origin === 'null' || origin === 'null:') {
         return res.status(403).json({ ok: false, error: 'file:// origin not allowed' });
     }
-    const allowed = !origin ||
-        ALLOWED_ORIGINS.has(origin) ||
-        /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
-    if (!allowed) {
+    if (!isOriginAllowed(origin)) {
         console.warn(`[CORS] Blocked: ${origin}`);
         return res.status(403).json({ ok: false, error: 'Forbidden origin' });
     }
     res.setHeader('Access-Control-Allow-Origin',  origin || 'http://localhost');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Shaker-Token');
+    res.setHeader('Vary', 'Origin, Accept-Encoding'); // FIX G4
     if (req.method === 'OPTIONS') { res.sendStatus(204); return; }
     next();
 });
@@ -66,6 +95,7 @@ app.use((req, res, next) => {
     res.setHeader('X-XSS-Protection',       '1; mode=block');
     res.setHeader('Referrer-Policy',        'no-referrer');
     res.setHeader('Cache-Control',          'no-store');
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     next();
 });
 
@@ -80,7 +110,6 @@ app.use((req, res, next) => {
             if (err) { _json(data); return; }
             res.setHeader('Content-Encoding', 'gzip');
             res.setHeader('Content-Type', 'application/json');
-            res.setHeader('Vary', 'Accept-Encoding');
             res.end(gz);
         });
     };
@@ -116,7 +145,7 @@ function advancedRateLimit(req, res, next) {
     }
     next();
 }
-setInterval(() => {
+const _rlCleanup = setInterval(() => {
     const n = Date.now();
     _rl.forEach((v, k)   => { if (n > v.reset)  _rl.delete(k); });
     _bans.forEach((v, k) => { if (n > v.until) _bans.delete(k); });
@@ -124,10 +153,8 @@ setInterval(() => {
 
 // ── TOKEN AUTH (timing-safe) ──────────────────────────────────────────────
 function requireToken(req, res, next) {
-    const token = req.headers['x-shaker-token'] || ''; // Header only — no query string
+    const token = req.headers['x-shaker-token'] || '';
     try {
-        // Length check first (constant time via timingSafeEqual on padded buffers)
-        // Pad both to same fixed length to prevent length-based timing attacks
         const MAX_LEN = Math.max(token.length, API_TOKEN.length, 64);
         const tokenBuf  = Buffer.alloc(MAX_LEN);
         const secretBuf = Buffer.alloc(MAX_LEN);
@@ -144,21 +171,18 @@ function requireToken(req, res, next) {
 }
 
 // ── PAYLOAD VALIDATION ────────────────────────────────────────────────────
-const MAX_PAYLOAD_BYTES = 50 * 1024 * 1024; // 50MB
+const MAX_PAYLOAD_BYTES = 50 * 1024 * 1024;
 
 function validatePayload(req, res, next) {
     if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body))
         return res.status(400).json({ ok: false, error: 'Invalid payload' });
     if (!Object.keys(req.body).length)
         return res.status(400).json({ ok: false, error: 'Empty payload' });
-
-    // FIX L2: guard against deep nesting / huge payloads
     try {
         const serialized = JSON.stringify(req.body);
         if (serialized.length > MAX_PAYLOAD_BYTES) {
             return res.status(413).json({ ok: false, error: 'Payload too large (max 50MB)' });
         }
-        // Depth check — walk the object
         const checkDepth = (obj, depth = 0) => {
             if (depth > 20) throw new Error('Too deeply nested');
             if (obj && typeof obj === 'object')
@@ -215,7 +239,6 @@ let _latestData  = null;
 let _latestHash  = null;
 const _hash      = o => crypto.createHash('sha256').update(JSON.stringify(o)).digest('hex');
 
-// FIX L1: store intervalId so we can clear it on shutdown
 const _autoBackupInterval = setInterval(async () => {
     if (!_latestData) return;
     const h = _hash(_latestData);
@@ -230,7 +253,6 @@ const _autoBackupInterval = setInterval(async () => {
 // ── ROUTES ────────────────────────────────────────────────────────────────
 app.post('/backup', requireToken, advancedRateLimit, validatePayload, async (req, res) => {
     try {
-        // FIX L3: cap in-memory data at 50MB
         const serialized = JSON.stringify(req.body);
         if (serialized.length > MAX_PAYLOAD_BYTES) {
             return res.status(413).json({ ok: false, error: 'Data too large for memory cache' });
@@ -274,7 +296,7 @@ app.get('/status', requireToken, async (req, res) => {
         fsp.access(path.join(BACKUP_DIR_2, MAIN_FILE)).then(() => true).catch(() => false),
     ]);
     res.json({
-        ok: true, version: 'v11',
+        ok: true, version: 'v12',
         hasData: !!_latestData,
         dataSize: _latestData ? JSON.stringify(_latestData).length : 0,
         backup1: e1, backup2: e2,
@@ -282,7 +304,7 @@ app.get('/status', requireToken, async (req, res) => {
     });
 });
 
-app.get('/ping', (_req, res) => res.json({ ok: true, ts: Date.now(), version: 'v11' }));
+app.get('/ping', (_req, res) => res.json({ ok: true, ts: Date.now(), version: 'v12' }));
 app.use((_req, res) => res.status(404).json({ ok: false, error: 'Not found' }));
 app.use((err, _req, res, _next) => {
     console.error('[Unhandled]', err?.message);
@@ -293,19 +315,23 @@ app.use((err, _req, res, _next) => {
 ensureDirs().then(() => {
     const srv = app.listen(PORT, '127.0.0.1', () => {
         console.log('\n╔══════════════════════════════════════════════╗');
-        console.log('║    SHAKER Backup Server v11 — Ready ✅       ║');
-        console.log(`║    http://127.0.0.1:${PORT}                    ║`);
+        console.log('║    SHAKER Backup Server v12 — Ready ✅       ║');
+        console.log(`║    http://127.0.0.1:${PORT}                     ║`);
         console.log('╚══════════════════════════════════════════════╝\n');
         console.log(`📁 Dir1: ${BACKUP_DIR_1}`);
         console.log(`📁 Dir2: ${BACKUP_DIR_2}`);
         console.log('🔑 Token: ✅ Set');
-        console.log('🛡️  CORS: localhost only\n');
+        if (EXTRA_ORIGINS.size)
+            console.log('🌐 Extra origins:', [...EXTRA_ORIGINS].join(', '));
+        if (ALLOW_GITHUB_PAGES)
+            console.log('🐙 GitHub Pages: allowed (*.github.io)');
+        console.log('🛡️  CORS: localhost + opt-in\n');
     });
 
-    // FIX L1: clear interval on graceful shutdown
     const stop = sig => {
         console.log(`\n👋 ${sig} — shutting down...`);
         clearInterval(_autoBackupInterval);
+        clearInterval(_rlCleanup);
         srv.close(() => process.exit(0));
         setTimeout(() => process.exit(1), 5000);
     };

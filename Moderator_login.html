@@ -3,6 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self' https://www.gstatic.com https://cdnjs.cloudflare.com 'unsafe-inline';
+  style-src 'self' https://cdnjs.cloudflare.com https://fonts.googleapis.com 'unsafe-inline';
+  font-src  https://fonts.gstatic.com https://cdnjs.cloudflare.com data:;
+  img-src   'self' data: https:;
+  connect-src 'self' https://*.firebaseio.com wss://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com;
+  frame-src 'none';
+  object-src 'none';
+  base-uri 'self';
+">
 <title>SHAKER - دخول المشرف</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
@@ -62,23 +73,21 @@ body{background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);min-height:100vh
       <h1 class="t1">تسجيل الدخول</h1>
       <div class="badge"><i class="fas fa-user-shield"></i><span>بوابة المشرفين</span></div>
       <div class="f">
-        <label>اسم المستخدم</label>
+        <label for="iu">اسم المستخدم</label>
         <div class="iw">
-          <input type="text" id="iu" placeholder="اسم المستخدم" autocomplete="username"
-                 onkeydown="if(event.key==='Enter')document.getElementById('ip').focus()">
+          <input type="text" id="iu" placeholder="اسم المستخدم" autocomplete="username">
         </div>
       </div>
       <div class="f">
-        <label>كلمة المرور</label>
+        <label for="ip">كلمة المرور</label>
         <div class="iw">
-          <input type="password" id="ip" placeholder="كلمة المرور" autocomplete="current-password"
-                 onkeydown="if(event.key==='Enter')doLogin()">
-          <button class="eye" type="button" onclick="toggleEye()" tabindex="-1">
+          <input type="password" id="ip" placeholder="كلمة المرور" autocomplete="current-password">
+          <button class="eye" type="button" id="eye-btn" tabindex="-1">
             <i class="fas fa-eye" id="eye-ic"></i>
           </button>
         </div>
       </div>
-      <button class="btn" id="lb" onclick="doLogin()">
+      <button class="btn" id="lb" type="button">
         <i class="fas fa-sign-in-alt"></i><span id="lbt">تسجيل الدخول</span>
       </button>
       <div class="err" id="eb"></div>
@@ -88,93 +97,94 @@ body{background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);min-height:100vh
   </div>
 </div>
 <script>
-// ══════════════════════════════════════════════════════════
-// Moderator Login — Firebase Auth
-// Flow: username → email (username@shaker.mod) → Firebase Auth
-// Auth.loginModerator handles everything via js/auth.js
-// ══════════════════════════════════════════════════════════
+(function() {
+    FB.init();
+    const _auth = FB.getAuth();
 
-FB.init();
-const _auth = FB.getAuth(), _db = FB.getDb();
+    const stEl = document.getElementById('fb-st');
+    if (FB.isOk()) { stEl.textContent = '🔥 متصل بـ Firebase'; stEl.className = 'fb-st ok'; }
+    else { stEl.textContent = '⚠️ تعذر الاتصال'; stEl.className = 'fb-st'; }
 
-// Show connection status
-const stEl = document.getElementById('fb-st');
-if (FB.isOk()) { stEl.textContent = '🔥 متصل بـ Firebase'; stEl.className = 'fb-st ok'; }
-else { stEl.textContent = '⚠️ تعذر الاتصال'; stEl.className = 'fb-st'; }
-
-// Auto-redirect if already logged in as moderator
-if (_auth) {
-    _auth.onAuthStateChanged(async user => {
-        if (!user) return;
-        try {
-            const snap = await _db.ref('shaker/users/' + user.uid).once('value');
-            if (!snap.exists()) { await _auth.signOut(); return; }
-            const d = snap.val();
-            if (d.role === 'moderator' && d.active !== false) {
-                // Already authenticated moderator — refresh session and redirect
-                sessionStorage.setItem('shaker_mod_session', JSON.stringify({
-                    uid: user.uid,
-                    username: d.username || d.displayName || user.email?.replace('@shaker.mod','') || '',
-                    displayName: d.displayName || d.username || '',
-                    role: 'moderator',
-                    loginTime: Date.now()
-                }));
-                window.location.href = 'Moderator.html';
-            } else if (d.role === 'admin') {
-                window.location.href = 'index.html';
-            } else {
-                await _auth.signOut();
-            }
-        } catch(_) {}
-    });
-}
-
-function showErr(msg) {
-    const el = document.getElementById('eb');
-    el.textContent = msg;
-    el.style.display = 'block';
-    el.classList.remove('shake');
-    void el.offsetWidth;
-    el.classList.add('shake');
-}
-
-function toggleEye() {
-    const i = document.getElementById('ip'), ic = document.getElementById('eye-ic');
-    if (i.type === 'password') { i.type = 'text'; ic.className = 'fas fa-eye-slash'; }
-    else { i.type = 'password'; ic.className = 'fas fa-eye'; }
-}
-
-async function doLogin() {
-    if (!Throttle.check('mod_login')) return;
-    document.getElementById('eb').style.display = 'none';
-    const username = document.getElementById('iu').value.trim().toLowerCase();
-    const pass     = document.getElementById('ip').value;
-    const btn = document.getElementById('lb'), bt = document.getElementById('lbt');
-    if (!username || !pass) { showErr('يرجى إدخال اسم المستخدم وكلمة المرور'); return; }
-    if (!FB.isOk()) { showErr('Firebase غير متصل — تحقق من الإنترنت'); return; }
-    btn.disabled = true; bt.textContent = 'جارٍ التحقق...';
-    try {
-        // Firebase Auth: username@shaker.mod + password
-        const user = await Auth.loginModerator(username, pass);
-        // Read profile from DB
-        const snap = await _db.ref('shaker/users/' + user.uid).once('value');
-        const d = snap.exists() ? snap.val() : {};
-        // Save session
-        sessionStorage.setItem('shaker_mod_session', JSON.stringify({
-            uid: user.uid,
-            username: d.username || username,
-            displayName: d.displayName || d.username || username,
-            role: 'moderator',
-            loginTime: Date.now()
-        }));
-        Throttle.clear('mod_login');
-        window.location.href = 'Moderator.html';
-    } catch(e) {
-        Throttle.record('mod_login');
-        showErr(e.message);
-        btn.disabled = false; bt.textContent = 'تسجيل الدخول';
+    // Auto-redirect if already signed in — FAIL CLOSED
+    if (_auth) {
+        _auth.onAuthStateChanged(async user => {
+            if (!user) return;
+            try {
+                const p = await FB.readUserProfile(user.uid);
+                if (!p || p.active === false) { await FB.logout(); return; }
+                if (p.role === 'moderator') {
+                    sessionStorage.setItem('shaker_mod_session', JSON.stringify({
+                        uid: user.uid,
+                        username: p.username || '',
+                        displayName: p.displayName || p.username || '',
+                        role: 'moderator',
+                        loginTime: Date.now()
+                    }));
+                    window.location.href = 'Moderator.html';
+                    return;
+                }
+                if (p.role === 'admin') {
+                    window.location.href = 'index.html';
+                    return;
+                }
+                await FB.logout();
+            } catch (_) { /* stay */ }
+        });
     }
-}
+
+    function showErr(msg) {
+        const el = document.getElementById('eb');
+        el.textContent = msg;
+        el.style.display = 'block';
+        el.classList.remove('shake');
+        void el.offsetWidth;
+        el.classList.add('shake');
+    }
+
+    function toggleEye() {
+        const i = document.getElementById('ip'), ic = document.getElementById('eye-ic');
+        if (i.type === 'password') { i.type = 'text'; ic.className = 'fas fa-eye-slash'; }
+        else { i.type = 'password'; ic.className = 'fas fa-eye'; }
+    }
+
+    async function doLogin() {
+        if (!Throttle.check('mod_login')) return;
+        document.getElementById('eb').style.display = 'none';
+        const username = document.getElementById('iu').value.trim().toLowerCase();
+        const pass     = document.getElementById('ip').value;
+        const btn = document.getElementById('lb'), bt = document.getElementById('lbt');
+        if (!username || !pass) { showErr('يرجى إدخال اسم المستخدم وكلمة المرور'); return; }
+        if (!FB.isOk()) { showErr('Firebase غير متصل — تحقق من الإنترنت'); return; }
+        btn.disabled = true; bt.textContent = 'جارٍ التحقق...';
+        try {
+            const user = await Auth.loginModerator(username, pass);
+            const profile = await FB.readUserProfile(user.uid);
+            if (!profile) throw new Error('لا يوجد ملف لهذا الحساب');
+            sessionStorage.setItem('shaker_mod_session', JSON.stringify({
+                uid: user.uid,
+                username: profile.username || username,
+                displayName: profile.displayName || profile.username || username,
+                role: 'moderator',
+                loginTime: Date.now()
+            }));
+            Throttle.clear('mod_login');
+            window.location.href = 'Moderator.html';
+        } catch (e) {
+            Throttle.record('mod_login');
+            showErr(e.message);
+            btn.disabled = false; bt.textContent = 'تسجيل الدخول';
+        }
+    }
+
+    document.getElementById('lb').addEventListener('click', doLogin);
+    document.getElementById('eye-btn').addEventListener('click', toggleEye);
+    document.getElementById('iu').addEventListener('keydown', e => {
+        if (e.key === 'Enter') document.getElementById('ip').focus();
+    });
+    document.getElementById('ip').addEventListener('keydown', e => {
+        if (e.key === 'Enter') doLogin();
+    });
+})();
 </script>
 </body>
 </html>

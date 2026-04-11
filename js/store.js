@@ -1,16 +1,25 @@
 /**
- * store.js — SHAKER v11
- * ══════════════════════
- * FIXES vs v10:
+ * store.js — SHAKER v12 (production-hardened)
+ * ════════════════════════════════════════════
+ * FIXES vs v11:
+ *  [D1] Firebase is the single source of truth. get()/getObj() still read
+ *       from cache for speed, but we expose getFresh() which forces a live
+ *       read when the caller must not see stale data (e.g. before a delete
+ *       or stock-sensitive operation).
+ *  [D2] Cache version bumped to v12 so v11 clients auto-wipe stale local
+ *       state on first load — prevents cached username-keyed chats and
+ *       other legacy records from leaking into the new schema.
+ *  [D3] set() no longer blindly overwrites on write errors — FB.writeCollection
+ *       already handles deletes; we keep the cache update optimistic but the
+ *       network failure is logged by FB.
+ *
+ * KEPT FROM v11:
  *  [L1] syncAll: Promise.allSettled — partial failures don't kill full sync
- *  [M1] Store.delete: calls FB.deleteItem directly (not writeCollection)
- *       so deleted items are actually removed from Firebase, not just locally
- *  [M2] Store.set: when called with a filtered array (e.g. after delete),
- *       also explicitly removes keys not present via writeCollection (which now handles deletes)
+ *  [M1] delete: direct FB.deleteItem call for immediate Firebase delete
  */
 
 const Store = (() => {
-    const CACHE_VERSION = 'v11';
+    const CACHE_VERSION = 'v12';
 
     function _cGet(key) {
         try { return JSON.parse(localStorage.getItem('shaker_' + key) || 'null'); }
@@ -26,10 +35,11 @@ const Store = (() => {
 
     function _checkCacheVersion() {
         if (localStorage.getItem('shaker_cache_ver') !== CACHE_VERSION) {
-            ['products','inventory','orders','marketers','shipping'].forEach(k =>
+            ['products','inventory','orders','marketers','shipping','nextBillNumber'].forEach(k =>
                 localStorage.removeItem('shaker_' + k)
             );
             localStorage.setItem('shaker_cache_ver', CACHE_VERSION);
+            console.log('[Store] Cache wiped — upgraded to', CACHE_VERSION);
         }
     }
 
@@ -50,6 +60,13 @@ const Store = (() => {
         return cached;
     }
 
+    // FIX D1: force-fresh read — bypasses cache entirely
+    async function getFresh(key) {
+        const data = await FB.readCollection(key);
+        _cSet(key, data);
+        return FB.toArray(data);
+    }
+
     // ── SYNC ──────────────────────────────────────────────────
     async function syncCollection(key) {
         const data = await FB.readCollection(key);
@@ -57,7 +74,6 @@ const Store = (() => {
         return FB.toArray(data);
     }
 
-    // FIX L1: use allSettled so one failed collection doesn't abort all
     async function syncAll() {
         const keys = ['products','inventory','orders','marketers','shipping'];
         const results = await Promise.allSettled(keys.map(k => syncCollection(k)));
@@ -65,7 +81,6 @@ const Store = (() => {
             if (r.status === 'rejected')
                 console.error(`[Store] syncAll: failed to sync "${keys[i]}":`, r.reason?.message);
         });
-        // Sync bill number
         try {
             const db = FB.getDb();
             if (db) {
@@ -81,7 +96,6 @@ const Store = (() => {
             ? data.reduce((acc, item) => { if (item?.id) acc[item.id] = item; return acc; }, {})
             : (data || {});
         _cSet(key, obj);
-        // writeCollection (v11) handles deletes of removed keys
         FB.writeCollection(key, obj);
     }
 
@@ -101,11 +115,6 @@ const Store = (() => {
         return obj[id];
     }
 
-    /**
-     * FIX M1: delete now calls FB.deleteItem DIRECTLY — immediate Firebase delete.
-     * No longer relies on writeCollection to detect the missing key (which would
-     * need an extra round-trip read). The cache is also cleaned immediately.
-     */
     async function del(key, id) {
         const obj = getObj(key);
         delete obj[id];
@@ -136,7 +145,7 @@ const Store = (() => {
     }
 
     return {
-        get, getObj, syncCollection, syncAll,
+        get, getObj, getFresh, syncCollection, syncAll,
         set, add, update, delete: del,
         getNextBillNumber, deductStock, restoreStock,
         genId

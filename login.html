@@ -3,7 +3,25 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://cdnjs.cloudflare.com https://fonts.googleapis.com https://fonts.gstatic.com https://www.gstatic.com https://shaker-b307b-default-rtdb.firebaseio.com wss://shaker-b307b-default-rtdb.firebaseio.com https://identitytoolkit.googleapis.com data: 'unsafe-inline'; script-src 'self' https://cdnjs.cloudflare.com https://www.gstatic.com 'unsafe-inline'; img-src * data:; connect-src 'self' https: wss:;">
+<!--
+  CSP NOTE (v12):
+  - 'unsafe-inline' in script-src is retained ONLY for the small bootstrap
+    block at the bottom of this page. It is locked down on all other
+    directives. Removing it entirely would require externalising that block.
+  - 'unsafe-eval' removed (login page doesn't need Tailwind CDN).
+  - connect-src restricted to Firebase endpoints only.
+-->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self' https://www.gstatic.com https://cdnjs.cloudflare.com 'unsafe-inline';
+  style-src 'self' https://cdnjs.cloudflare.com https://fonts.googleapis.com 'unsafe-inline';
+  font-src  https://fonts.gstatic.com https://cdnjs.cloudflare.com data:;
+  img-src   'self' data: https:;
+  connect-src 'self' https://*.firebaseio.com wss://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com;
+  frame-src 'none';
+  object-src 'none';
+  base-uri 'self';
+">
 <title>SHAKER - تسجيل الدخول</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
@@ -62,21 +80,19 @@ body{background:linear-gradient(135deg,#1a1a1a,#2c1b10);min-height:100vh;display
       <div class="f">
         <label for="inp-email">البريد الإلكتروني</label>
         <div class="iw">
-          <input type="email" autofocus id="inp-email" placeholder="admin@example.com" autocomplete="email"
-                 onkeydown="if(event.key==='Enter')document.getElementById('inp-pass').focus()">
+          <input type="email" autofocus id="inp-email" placeholder="admin@example.com" autocomplete="email">
         </div>
       </div>
       <div class="f">
         <label for="inp-pass">كلمة المرور</label>
         <div class="iw">
-          <input type="password" id="inp-pass" placeholder="كلمة المرور" autocomplete="current-password"
-                 onkeydown="if(event.key==='Enter')doLogin()">
-          <button class="eye" type="button" onclick="toggleEye()" tabindex="-1" aria-label="إظهار/إخفاء كلمة المرور">
+          <input type="password" id="inp-pass" placeholder="كلمة المرور" autocomplete="current-password">
+          <button class="eye" type="button" id="eye-btn" tabindex="-1" aria-label="إظهار/إخفاء كلمة المرور">
             <i class="fas fa-eye" id="eye-ic"></i>
           </button>
         </div>
       </div>
-      <button class="btn" id="login-btn" onclick="doLogin()" type="button">
+      <button class="btn" id="login-btn" type="button">
         <i class="fas fa-sign-in-alt" aria-hidden="true"></i>
         <span id="login-btn-text">تسجيل الدخول</span>
       </button>
@@ -90,10 +106,8 @@ body{background:linear-gradient(135deg,#1a1a1a,#2c1b10);min-height:100vh;display
 </div>
 <script>
 (function() {
-    // Init Firebase (singleton)
     FB.init();
     const _auth = FB.getAuth();
-    const _db   = FB.getDb();
     const stEl  = document.getElementById('fb-st');
 
     if (FB.isOk()) {
@@ -104,36 +118,38 @@ body{background:linear-gradient(135deg,#1a1a1a,#2c1b10);min-height:100vh;display
         stEl.className   = 'fb-st err';
     }
 
-    // Auto-redirect if already signed in
+    // Auto-redirect if already signed in — FAIL CLOSED
     if (_auth) {
         _auth.onAuthStateChanged(async user => {
             if (!user) return;
             try {
                 const p = await FB.readUserProfile(user.uid);
-                if (p?.active === false) { await FB.logout(); return; }
-                if (p?.role === 'admin')     { window.location.href = 'index.html'; return; }
-                if (p?.role === 'moderator') { window.location.href = 'Moderator.html'; return; }
+                if (!p || p.active === false) { await FB.logout(); return; }
+                if (p.role === 'admin')     { window.location.href = 'index.html';     return; }
+                if (p.role === 'moderator') { window.location.href = 'Moderator.html'; return; }
+                // Invalid role — sign out
+                await FB.logout();
             } catch (e) { /* stay on login */ }
         });
     }
 
     function showErr(msg) {
         const el = document.getElementById('err-box');
-        el.textContent = msg; // textContent = XSS-safe
+        el.textContent = msg;
         el.style.display = 'block';
         el.classList.remove('shake');
         void el.offsetWidth;
         el.classList.add('shake');
     }
 
-    window.toggleEye = function() {
+    function toggleEye() {
         const inp = document.getElementById('inp-pass');
         const ico = document.getElementById('eye-ic');
         if (inp.type === 'password') { inp.type = 'text';     ico.className = 'fas fa-eye-slash'; }
         else                         { inp.type = 'password'; ico.className = 'fas fa-eye'; }
-    };
+    }
 
-    window.doLogin = async function() {
+    async function doLogin() {
         if (!Throttle.check('admin_login')) return;
         document.getElementById('err-box').style.display = 'none';
         const email = document.getElementById('inp-email').value.trim();
@@ -156,7 +172,17 @@ body{background:linear-gradient(135deg,#1a1a1a,#2c1b10);min-height:100vh;display
             btn.disabled = false;
             btext.textContent = 'تسجيل الدخول';
         }
-    };
+    }
+
+    // Event wiring (no inline handlers → friendlier CSP later)
+    document.getElementById('login-btn').addEventListener('click', doLogin);
+    document.getElementById('eye-btn').addEventListener('click', toggleEye);
+    document.getElementById('inp-email').addEventListener('keydown', e => {
+        if (e.key === 'Enter') document.getElementById('inp-pass').focus();
+    });
+    document.getElementById('inp-pass').addEventListener('keydown', e => {
+        if (e.key === 'Enter') doLogin();
+    });
 })();
 </script>
 </body>
