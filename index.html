@@ -30,10 +30,35 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <!-- Google Fonts -->
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
-<!-- SheetJS for Excel Export -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<!-- Chart.js -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<!-- SheetJS for Excel Export — LAZY LOADED (v13: was render-blocking) -->
+<script>
+// P5: Lazy-load heavy libraries AFTER first paint
+window._loadXLSX = () => {
+    if (window.XLSX) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+        s.onload = resolve; s.onerror = reject;
+        document.head.appendChild(s);
+    });
+};
+window._loadChartJS = () => {
+    if (window.Chart) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js';
+        s.onload = resolve; s.onerror = reject;
+        document.head.appendChild(s);
+    });
+};
+// Preload after first paint (non-blocking)
+requestAnimationFrame(() => {
+    setTimeout(() => {
+        window._loadChartJS();
+        window._loadXLSX();
+    }, 100);
+});
+</script>
 <!-- ════════════════════════════════════════════════
 🔥 FIREBASE SDK
 ════════════════════════════════════════════════ -->
@@ -2811,39 +2836,35 @@ const map = {'auth/wrong-password':'❌ كلمة المرور الحالية غ�
 Toast.show(map[e.code] || '❌ ' + e.message, 'error');
 }
 }
-// === Logout ===
+// === Logout (v13: uses FB.logout which clears cache) ===
 async function doLogout() {
 try {
-if (FB.getAuth()) await FB.getAuth().signOut();
+await FB.logout();
 } catch(e) { console.warn('signOut error:', e); }
 window.location.href = 'login.html';
 }
-// === Initialize ===
+// === Initialize (v13 — optimized) ===
 window.addEventListener('DOMContentLoaded', async () => {
 const splashScreen = document.getElementById('splashScreen');
-// ── Firebase + Auth Guard (v12) ──────────────────────────────
-// SECURITY: The old inline guard here contained an admin auto-creation
-// backdoor. It's been replaced with a single call to Auth.guardPage which
-// fails closed on missing profile / missing role / DB error.
-FB.init();
+// ── Auth Guard (v13: cache-first → instant show, then background verify) ──
+// FB.init() already ran at script-load time — no need to call again.
 const { userData: _admin } = await Auth.guardPage('admin', 'login.html');
 window._adminData = _admin;
 {
     const el = document.getElementById('admin-user-info');
     if (el) el.textContent = '👤 ' + (_admin.displayName || 'Admin');
 }
-// 🔥 Sync data from Firebase (targeted reads — no bulk)
-if (FB.isOk()) {
-try {
-await Store.syncAll();
-await FB.migrateIfEmpty();
-} catch(e) { console.error('[init] sync error:', e.message); }
+// 🔥 Sync + app init run concurrently, splash dismissed when BOTH complete
+const syncPromise = FB.isOk()
+    ? Store.syncAll().then(() => FB.migrateIfEmpty()).catch(e => console.error('[init] sync:', e.message))
+    : Promise.resolve();
+const [/*sync*/] = await Promise.all([syncPromise, app.init()]);
+// v13: dismiss splash immediately when data is ready (was hardcoded 2000ms)
+if (splashScreen) {
+    splashScreen.style.transition = 'opacity 0.35s ease';
+    splashScreen.style.opacity = '0';
+    setTimeout(() => { splashScreen.style.display = 'none'; }, 400);
 }
-setTimeout(function() {
-splashScreen.style.opacity = '0';
-setTimeout(function() { splashScreen.style.display = 'none'; }, 500);
-}, 2000);
-await app.init(); // FIX: await app.init since it's async now
 app.initStockTable();
 const _origNav = app.nav.bind(app);
 app.nav = function(section) {
@@ -2852,7 +2873,6 @@ if (section === 'factory')    { renderFactorySection(); }
 if (section === 'moderators') { ModMgr.render(); }
 if (section === 'settings')   { setTimeout(() => Backup.renderList(), 100); }
 };
-// Image upload handled by onchange attribute on input#prod-image
 AreaSelector.init();
 const originalOpen = app.modals.open;
 app.modals.open = (id) => {
@@ -2867,21 +2887,16 @@ ShippingPrice.update();
 }
 originalOpen(id);
 };
-// Auto-backup every 5 minutes to Firebase
-setInterval(async () => {
-await Backup.save(true);
-}, 5 * 60 * 1000);
-// FIX: flush pending debounced writes on page unload
+// Auto-backup every 5 minutes
+setInterval(async () => { await Backup.save(true); }, 5 * 60 * 1000);
+// Flush pending writes on page unload
 window.addEventListener('beforeunload', () => {
-// Force immediate save of any pending data
 ['products','inventory','orders','marketers','shipping'].forEach(k => {
 const data = localStorage.getItem('shaker_' + k);
-if (data && navigator.sendBeacon) {
-// Best-effort — Firebase SDK handles this internally via its own queue
-}
+if (data && navigator.sendBeacon) { /* Firebase SDK handles its own queue */ }
 });
 });
-// 🔥 Targeted realtime listeners (no bulk reads)
+// 🔥 Targeted realtime listeners
 FB.startRealtime(() => {
 const sections = ['dashboard','products','orders','marketers','inventory','shipping'];
 sections.forEach(s => {

@@ -3,14 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<!--
-  CSP NOTE (v12):
-  - 'unsafe-inline' in script-src is retained ONLY for the small bootstrap
-    block at the bottom of this page. It is locked down on all other
-    directives. Removing it entirely would require externalising that block.
-  - 'unsafe-eval' removed (login page doesn't need Tailwind CDN).
-  - connect-src restricted to Firebase endpoints only.
--->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
   script-src 'self' https://www.gstatic.com https://cdnjs.cloudflare.com 'unsafe-inline';
@@ -31,6 +23,40 @@
 <script src="js/firebase.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/ui.js"></script>
+<!--
+  PERFORMANCE (v13):
+  - firebase.js auto-inits at script load (no DOMContentLoaded wait).
+  - Inline <script> in <head> attempts INSTANT redirect from cache BEFORE
+    the page body even renders. This eliminates the "login page flash" when
+    the user is already authenticated:
+      1. Read shaker_user_cache from localStorage (0ms, sync).
+      2. Check firebase.auth().currentUser (0ms, sync — populated from
+         IndexedDB persistence by the Firebase SDK if the user was signed in).
+      3. If both exist and match → redirect IMMEDIATELY (location.href).
+         The browser navigates before it even paints the login form.
+      4. If no cache or no currentUser → fall through, paint the login form.
+    Firebase's authoritative check still runs on the target page (index.html /
+    Moderator.html) via Auth.guardPage's Phase 2 validation.
+-->
+<script>
+(function() {
+    // ── INSTANT REDIRECT (Phase 0 — before body paint) ──
+    try {
+        var raw = localStorage.getItem('shaker_user_cache');
+        if (raw) {
+            var cached = JSON.parse(raw);
+            // firebase.auth().currentUser is synchronously available if SDK
+            // restored the session from IndexedDB (which it does for returning users)
+            var auth = firebase.apps.length ? firebase.apps[0].auth() : null;
+            var cu   = auth && auth.currentUser;
+            if (cu && cached && cached.uid === cu.uid && cached.active !== false) {
+                if (cached.role === 'admin')     { window.location.replace('index.html');     return; }
+                if (cached.role === 'moderator') { window.location.replace('Moderator.html'); return; }
+            }
+        }
+    } catch(_) {}
+})();
+</script>
 <style>*{margin:0;padding:0;box-sizing:border-box;font-family:'Tajawal',sans-serif;}
 body{background:linear-gradient(135deg,#1a1a1a,#2c1b10);min-height:100vh;display:flex;}
 .wrap{display:flex;width:100%;min-height:100vh;}
@@ -106,9 +132,8 @@ body{background:linear-gradient(135deg,#1a1a1a,#2c1b10);min-height:100vh;display
 </div>
 <script>
 (function() {
-    FB.init();
-    const _auth = FB.getAuth();
-    const stEl  = document.getElementById('fb-st');
+    // FB.init() already called at script-load time in firebase.js
+    const stEl = document.getElementById('fb-st');
 
     if (FB.isOk()) {
         stEl.textContent = '🔥 متصل بـ Firebase';
@@ -118,18 +143,26 @@ body{background:linear-gradient(135deg,#1a1a1a,#2c1b10);min-height:100vh;display
         stEl.className   = 'fb-st err';
     }
 
-    // Auto-redirect if already signed in — FAIL CLOSED
+    // ── ASYNC REDIRECT (Phase 1 — for cases where Phase 0 didn't fire) ──
+    // This catches the case where currentUser was null synchronously (SDK
+    // hadn't restored the session yet) but onAuthStateChanged fires a moment
+    // later with the restored user. Without this, the login form would show
+    // briefly then redirect — that's the "flash" we want to eliminate.
+    const _auth = FB.getAuth();
     if (_auth) {
         _auth.onAuthStateChanged(async user => {
             if (!user) return;
             try {
-                const p = await FB.readUserProfile(user.uid);
+                // Try cache first for speed
+                let p = FB.getCachedProfile(user.uid);
+                if (!p || p.uid !== user.uid) {
+                    p = await FB.readUserProfile(user.uid);
+                }
                 if (!p || p.active === false) { await FB.logout(); return; }
-                if (p.role === 'admin')     { window.location.href = 'index.html';     return; }
-                if (p.role === 'moderator') { window.location.href = 'Moderator.html'; return; }
-                // Invalid role — sign out
+                if (p.role === 'admin')     { window.location.replace('index.html');     return; }
+                if (p.role === 'moderator') { window.location.replace('Moderator.html'); return; }
                 await FB.logout();
-            } catch (e) { /* stay on login */ }
+            } catch (_) { /* stay on login */ }
         });
     }
 
@@ -165,7 +198,8 @@ body{background:linear-gradient(135deg,#1a1a1a,#2c1b10);min-height:100vh;display
         try {
             await Auth.loginAdmin(email, pass);
             Throttle.clear('admin_login');
-            window.location.href = 'index.html';
+            // Profile is already cached by readUserProfile inside loginAdmin
+            window.location.replace('index.html');
         } catch (e) {
             Throttle.record('admin_login');
             showErr(e.message);
@@ -174,7 +208,6 @@ body{background:linear-gradient(135deg,#1a1a1a,#2c1b10);min-height:100vh;display
         }
     }
 
-    // Event wiring (no inline handlers → friendlier CSP later)
     document.getElementById('login-btn').addEventListener('click', doLogin);
     document.getElementById('eye-btn').addEventListener('click', toggleEye);
     document.getElementById('inp-email').addEventListener('keydown', e => {

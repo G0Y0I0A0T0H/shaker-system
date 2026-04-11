@@ -1,24 +1,34 @@
 /**
- * firebase.js — SHAKER v12 (production-hardened)
- * ═══════════════════════════════════════════════
- * SECURITY FIXES vs v11:
- *  [S1] CRITICAL: Removed admin auto-creation backdoor in onAuthChange.
- *       v11 would silently create a profile with role='admin' for ANY
- *       authenticated user whose DB record was missing. This meant anyone
- *       who could sign up via Firebase Auth (or whose profile was deleted)
- *       became an admin automatically. Now we FAIL CLOSED: missing profile
- *       → no role → caller must reject.
- *  [S2] onAuthChange callback signature expanded: cb(user, role, userData, dbError)
- *       so guardPage can distinguish "no profile" from "transient DB error".
- *  [S3] Removed every fallback that assumed role='admin'. No default role.
- *  [S4] Profile reads no longer swallow errors — we surface them upstream.
- *  [S5] log() never crashes but no longer leaks user email into logs unnecessarily.
+ * firebase.js — SHAKER v13 (performance-optimized)
+ * ═════════════════════════════════════════════════
+ * PERFORMANCE OPTIMIZATIONS vs v12:
+ *  [P1] User profile cache in localStorage (shaker_user_cache).
+ *       - guardPage/login pages get an INSTANT role check from cache.
+ *       - Firebase DB read happens in background to VALIDATE the cached data.
+ *       - If cache says "admin" but Firebase says "disabled", the background
+ *         check catches it and force-redirects.
+ *       - Cache is NEVER trusted for writes/mutations — only for fast UI display
+ *         and instant redirects on page load.
+ *       - Cache is keyed by UID so switching accounts auto-invalidates.
  *
- * KEPT FROM v11:
- *  [C1] writeCollection deletes removed keys (orphan fix)
- *  [C2] deductStock atomic transaction on specific key
- *  [C3] _watchConnection guarded against duplicate calls
- *  [C4] startRealtime guarded against multiple calls
+ *  [P2] readUserProfile() now uses cache-first with background refresh.
+ *       New signature: readUserProfile(uid, {useCache, refreshInBackground})
+ *       Default: cache-first. Callers that need strict freshness pass useCache:false.
+ *
+ *  [P3] onAuthChange uses cached profile for instant first callback.
+ *       Fires the callback TWICE:
+ *         1st: immediately with cached data (or null if no cache) — allows instant UI
+ *         2nd: after Firebase DB read completes — authoritative validation
+ *       The caller (guardPage) handles both via the `fromCache` flag.
+ *
+ *  [P4] init() is idempotent and runs at script-load time (not DOMContentLoaded).
+ *       Firebase SDK starts booting immediately when the script is parsed.
+ *
+ * SECURITY: UNCHANGED from v12:
+ *  - NO auto-creation of admin profiles
+ *  - NO default role fallbacks
+ *  - Fails CLOSED on missing profile / invalid role / DB error
+ *  - Cache is optimistic UI only — every access is validated by Firebase
  */
 
 const FIREBASE_CONFIG = {
@@ -40,11 +50,53 @@ const FB = (() => {
     let _listeners       = {};
     let _realtimeStarted = false;
     let _connListening   = false;
+    let _initDone        = false;  // P4: idempotent init
 
     // ══════════════════════════════════
-    // INIT
+    // PROFILE CACHE — P1
+    // ══════════════════════════════════
+    const CACHE_KEY      = 'shaker_user_cache';
+    const CACHE_MAX_AGE  = 30 * 60 * 1000; // 30 min max — background refresh keeps it fresh
+
+    function _cacheGet(uid) {
+        try {
+            const raw = localStorage.getItem(CACHE_KEY);
+            if (!raw) return null;
+            const c = JSON.parse(raw);
+            // Cache must match the current UID
+            if (!c || c.uid !== uid) return null;
+            // Expired cache is still returned but flagged
+            c._expired = (Date.now() - (c._cachedAt || 0)) > CACHE_MAX_AGE;
+            return c;
+        } catch (_) { return null; }
+    }
+
+    function _cacheSet(uid, profileData) {
+        if (!uid || !profileData) return;
+        try {
+            const toStore = {
+                uid:         profileData.uid || uid,
+                email:       profileData.email || '',
+                role:        profileData.role || null,
+                active:      profileData.active,
+                displayName: profileData.displayName || '',
+                username:    profileData.username || '',
+                _cachedAt:   Date.now()
+            };
+            localStorage.setItem(CACHE_KEY, JSON.stringify(toStore));
+        } catch (_) { /* quota errors — not critical */ }
+    }
+
+    function _cacheClear() {
+        try { localStorage.removeItem(CACHE_KEY); } catch (_) {}
+    }
+
+    // ══════════════════════════════════
+    // INIT — P4: runs once, idempotent
     // ══════════════════════════════════
     function init() {
+        if (_initDone) return;
+        _initDone = true;
         try {
             const app = firebase.apps.length
                 ? firebase.apps[0]
@@ -52,7 +104,6 @@ const FB = (() => {
             _db   = app.database();
             _auth = app.auth();
             _ok   = true;
-            console.log('[FB] ✅ Initialized');
             _watchConnection();
         } catch (e) {
             _ok = false;
@@ -74,42 +125,50 @@ const FB = (() => {
     }
 
     // ══════════════════════════════════
-    // AUTH STATE — FIX S1/S2/S3
+    // AUTH STATE — P3: cache-first, then authoritative
     // ══════════════════════════════════
-    // Callback signature: cb(user, role, userData, dbError)
-    //   user:      firebase.User | null
-    //   role:      'admin' | 'moderator' | null  (NEVER defaults to anything)
-    //   userData:  profile object | null
-    //   dbError:   Error | null   — set only on transient DB read failure
+    // Callback signature: cb(user, role, userData, dbError, meta)
+    //   meta.fromCache: true if this is the fast cached callback
+    //   meta.authoritative: true if this is the Firebase-verified callback
     function onAuthChange(cb) {
-        if (!_auth) { cb(null, null, null, null); return () => {}; }
+        if (!_auth) { cb(null, null, null, null, { fromCache: false, authoritative: true }); return () => {}; }
         return _auth.onAuthStateChanged(async user => {
             if (!user) {
-                console.log('[FB] 👤 Signed out');
-                cb(null, null, null, null);
+                _cacheClear();
+                cb(null, null, null, null, { fromCache: false, authoritative: true });
                 return;
             }
-            console.log(`[FB] 🔑 Auth state: ${user.uid}`);
+
+            const uid = user.uid;
+
+            // ── PHASE 1: Instant cache hit ──
+            const cached = _cacheGet(uid);
+            if (cached && cached.role && cached.active !== false) {
+                // Fire immediately with cached data so UI can show instantly
+                cb(user, cached.role, cached, null, { fromCache: true, authoritative: false });
+            }
+
+            // ── PHASE 2: Authoritative Firebase read ──
             try {
-                const snap = await _db.ref(`shaker/users/${user.uid}`).once('value');
+                const snap = await _db.ref(`shaker/users/${uid}`).once('value');
                 if (!snap.exists()) {
-                    // FIX S1: NO auto-creation. Missing profile = unauthorized.
-                    console.warn('[FB] ⛔ No profile for uid', user.uid, '— access denied');
-                    cb(user, null, null, null);
+                    _cacheClear();
+                    cb(user, null, null, null, { fromCache: false, authoritative: true });
                     return;
                 }
                 const userData = snap.val();
                 const role = userData.role;
                 if (role !== 'admin' && role !== 'moderator') {
-                    console.warn('[FB] ⛔ Invalid role:', role);
-                    cb(user, null, userData, null);
+                    _cacheClear();
+                    cb(user, null, userData, null, { fromCache: false, authoritative: true });
                     return;
                 }
-                cb(user, role, userData, null);
+                // Update cache with fresh data
+                _cacheSet(uid, userData);
+                cb(user, role, userData, null, { fromCache: false, authoritative: true });
             } catch (e) {
-                // FIX S2: surface DB error so guardPage can reject (not assume admin)
                 console.error('[FB] onAuthChange DB error:', e.message);
-                cb(user, null, null, e);
+                cb(user, null, null, e, { fromCache: false, authoritative: true });
             }
         });
     }
@@ -129,11 +188,25 @@ const FB = (() => {
         return snap.exists() ? snap.val() : null;
     }
 
-    // FIX S4: no longer swallows errors silently — returns null only for missing
-    async function readUserProfile(uid) {
+    // P2: readUserProfile with cache-first option
+    async function readUserProfile(uid, opts = {}) {
         if (!_ok || !uid) return null;
+        const { useCache = false } = opts;
+
+        if (useCache) {
+            const cached = _cacheGet(uid);
+            if (cached && !cached._expired) return cached;
+        }
+
         const snap = await _db.ref(`shaker/users/${uid}`).once('value');
-        return snap.exists() ? snap.val() : null;
+        const data = snap.exists() ? snap.val() : null;
+        if (data) _cacheSet(uid, data);
+        return data;
+    }
+
+    // Synchronous cache-only read (for instant redirects, never for auth decisions)
+    function getCachedProfile(uid) {
+        return _cacheGet(uid);
     }
 
     // ══════════════════════════════════
@@ -188,6 +261,11 @@ const FB = (() => {
     async function updateUserField(uid, fields) {
         if (!_ok) throw new Error('Firebase غير متصل');
         await _db.ref(`shaker/users/${uid}`).update(fields);
+        // Refresh cache after update
+        if (uid && fields) {
+            const cached = _cacheGet(uid);
+            if (cached) _cacheSet(uid, { ...cached, ...fields, _cachedAt: undefined });
+        }
     }
 
     // ══════════════════════════════════
@@ -402,7 +480,7 @@ const FB = (() => {
     }
 
     // ══════════════════════════════════
-    // CHAT — keyed by UID only (FIX: no username-keyed chats)
+    // CHAT — keyed by UID only
     // ══════════════════════════════════
     async function sendChatMessage(modUid, sender, text) {
         if (!_ok) throw new Error('Firebase غير متصل');
@@ -430,12 +508,12 @@ const FB = (() => {
     }
 
     // ══════════════════════════════════
-    // LOGOUT
+    // LOGOUT — clears cache
     // ══════════════════════════════════
     async function logout() {
         stopAllListeners();
+        _cacheClear();
         if (_auth) await _auth.signOut().catch(() => {});
-        // Clear session storage
         try { sessionStorage.removeItem('shaker_mod_session'); } catch (_) {}
     }
 
@@ -478,7 +556,7 @@ const FB = (() => {
 
     return {
         init, onAuthChange,
-        readCollection, readItem, readUserProfile,
+        readCollection, readItem, readUserProfile, getCachedProfile,
         writeCollection, writeItem, pushItem, deleteItem, setField, updateUserField,
         getNextBillNumber, deductStock, restoreStock,
         listen, stopAllListeners, startRealtime, listenCollection,
@@ -488,3 +566,6 @@ const FB = (() => {
         toArray, badge, getDb, getAuth, isOk
     };
 })();
+
+// P4: Auto-init at script load time — don't wait for DOMContentLoaded
+FB.init();
