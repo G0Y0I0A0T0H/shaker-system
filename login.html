@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <base href="./">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com https://cdnjs.cloudflare.com 'unsafe-inline'; style-src 'self' https://cdnjs.cloudflare.com https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com https://cdnjs.cloudflare.com data:; img-src 'self' data: https:; connect-src 'self' https://www.gstatic.com https://*.firebaseio.com wss://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com; frame-src 'none'; object-src 'none'; base-uri 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com https://cdnjs.cloudflare.com 'unsafe-inline'; style-src 'self' https://cdnjs.cloudflare.com https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com data:; img-src 'self' data: https:; connect-src 'self' https://*.firebaseio.com wss://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://firebaseinstallations.googleapis.com; frame-src 'none'; object-src 'none'; base-uri 'self';">
 <title>SHAKER - تسجيل الدخول</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
@@ -14,53 +14,37 @@
 <script src="./js/firebase.js"></script>
 <script src="./js/auth.js"></script>
 <script src="./js/ui.js"></script>
-<script>
-(function(){
-    try {
-        var raw = localStorage.getItem('shaker_user_cache');
-        if (raw) {
-            var cached = JSON.parse(raw);
-            var auth = firebase.apps.length ? firebase.apps[0].auth() : null;
-            var cu = auth && auth.currentUser;
-            if (cu && cached && cached.uid === cu.uid && cached.active !== false) {
-                if (cached.role === 'admin')     { window.location.replace('./index.html');     return; }
-                if (cached.role === 'moderator') { window.location.replace('./Moderator.html'); return; }
-            }
-        }
-    } catch(_) {}
-})();
-</script>
-<style>*{margin:0;padding:0;box-sizing:border-box;font-family:'Tajawal',sans-serif;}
-body{background:linear-gradient(135deg,#1a1a1a,#2c1b10);min-height:100vh;display:flex;}
-.wrap{display:flex;width:100%;min-height:100vh;}
-.left{flex:1;background:linear-gradient(135deg,#0d0d0d,#1a0f06);display:flex;justify-content:center;align-items:center;position:relative;overflow:hidden;}
-.left::before{content:"";position:absolute;width:400px;height:400px;background:radial-gradient(circle,rgba(189,150,87,.2),transparent 70%);border-radius:50%;}
-.logo-box{position:relative;z-index:2;text-align:center;}
-.logo-img{width:300px;filter:drop-shadow(0 0 20px rgba(189,150,87,.5));}
-.right{flex:1;background:#0f0f0f;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:2rem;}
-.card{background:rgba(25,25,25,.95);backdrop-filter:blur(10px);border-radius:20px;padding:2.5rem;width:100%;max-width:420px;border:1px solid rgba(189,150,87,.2);}
-.t1{font-size:2.5rem;font-weight:800;color:#bd9657;text-align:center;margin-bottom:.3rem;text-shadow:0 0 15px rgba(189,150,87,.7);}
-.sub{color:#888;text-align:center;margin-bottom:2rem;font-size:.95rem;}
-.f{margin-bottom:1.4rem;}
-.f label{display:block;margin-bottom:.5rem;color:#bd9657;font-weight:600;}
-.iw{position:relative;}
-.f input{width:100%;padding:.9rem 1.2rem;background:rgba(30,30,30,.9);border:1px solid rgba(189,150,87,.3);border-radius:12px;color:#fff;font-size:1rem;font-family:'Tajawal',sans-serif;transition:border-color .3s;}
-.f input:focus{outline:none;border-color:#bd9657;box-shadow:0 0 0 3px rgba(189,150,87,.15);}
-.eye{position:absolute;left:.9rem;top:50%;transform:translateY(-50%);background:none;border:none;color:#666;cursor:pointer;font-size:.95rem;}
-.eye:hover{color:#bd9657;}
-.btn{width:100%;padding:1rem;background:linear-gradient(135deg,#bd9657,#a67c47);border:none;border-radius:12px;color:#000;font-size:1.1rem;font-weight:700;cursor:pointer;font-family:'Tajawal',sans-serif;display:flex;align-items:center;justify-content:center;gap:.5rem;transition:all .3s;}
-.btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 6px 20px rgba(189,150,87,.5);}
-.btn:disabled{opacity:.6;cursor:not-allowed;transform:none;}
-.err{border:1px solid rgba(239,68,68,.4);background:rgba(239,68,68,.15);color:#fca5a5;border-radius:10px;padding:.75rem;text-align:center;margin-top:1rem;display:none;font-size:.9rem;line-height:1.5;}
-.fb-st{text-align:center;margin-top:.8rem;font-size:.8rem;color:#555;}
-.fb-st.ok{color:#4ade80;} .fb-st.err{color:#f87171;}
-.bl{text-align:center;margin-top:1.5rem;}
-.bl a{color:#6b7280;font-size:.9rem;text-decoration:none;}
-.bl a:hover{color:#bd9657;}
-#toast-container{position:fixed;bottom:1rem;left:1rem;z-index:9999;display:flex;flex-direction:column;gap:.5rem;}
-@media(max-width:900px){.wrap{flex-direction:column;}.left{min-height:35vh;}.logo-img{width:200px;}}
+<style>*{margin:0;padding:0;box-sizing:border-box;font-family:'Tajawal',sans-serif}
+body{background:linear-gradient(135deg,#1a1a1a,#2c1b10);min-height:100vh;display:flex}
+.wrap{display:flex;width:100%;min-height:100vh}
+.left{flex:1;background:linear-gradient(135deg,#0d0d0d,#1a0f06);display:flex;justify-content:center;align-items:center;position:relative;overflow:hidden}
+.left::before{content:"";position:absolute;width:400px;height:400px;background:radial-gradient(circle,rgba(189,150,87,.2),transparent 70%);border-radius:50%}
+.logo-box{position:relative;z-index:2;text-align:center}
+.logo-img{width:300px;filter:drop-shadow(0 0 20px rgba(189,150,87,.5))}
+.right{flex:1;background:#0f0f0f;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:2rem}
+.card{background:rgba(25,25,25,.95);backdrop-filter:blur(10px);border-radius:20px;padding:2.5rem;width:100%;max-width:420px;border:1px solid rgba(189,150,87,.2)}
+.t1{font-size:2.5rem;font-weight:800;color:#bd9657;text-align:center;margin-bottom:.3rem;text-shadow:0 0 15px rgba(189,150,87,.7)}
+.sub{color:#888;text-align:center;margin-bottom:2rem;font-size:.95rem}
+.f{margin-bottom:1.4rem}
+.f label{display:block;margin-bottom:.5rem;color:#bd9657;font-weight:600}
+.iw{position:relative}
+.f input{width:100%;padding:.9rem 1.2rem;background:rgba(30,30,30,.9);border:1px solid rgba(189,150,87,.3);border-radius:12px;color:#fff;font-size:1rem;font-family:'Tajawal',sans-serif;transition:border-color .3s}
+.f input:focus{outline:none;border-color:#bd9657;box-shadow:0 0 0 3px rgba(189,150,87,.15)}
+.eye{position:absolute;left:.9rem;top:50%;transform:translateY(-50%);background:none;border:none;color:#666;cursor:pointer;font-size:.95rem}
+.eye:hover{color:#bd9657}
+.btn{width:100%;padding:1rem;background:linear-gradient(135deg,#bd9657,#a67c47);border:none;border-radius:12px;color:#000;font-size:1.1rem;font-weight:700;cursor:pointer;font-family:'Tajawal',sans-serif;display:flex;align-items:center;justify-content:center;gap:.5rem;transition:all .3s}
+.btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 6px 20px rgba(189,150,87,.5)}
+.btn:disabled{opacity:.6;cursor:not-allowed;transform:none}
+.err{border:1px solid rgba(239,68,68,.4);background:rgba(239,68,68,.15);color:#fca5a5;border-radius:10px;padding:.75rem;text-align:center;margin-top:1rem;display:none;font-size:.9rem;line-height:1.5}
+.fb-st{text-align:center;margin-top:.8rem;font-size:.8rem;color:#555}
+.fb-st.ok{color:#4ade80}.fb-st.err{color:#f87171}
+.bl{text-align:center;margin-top:1.5rem}
+.bl a{color:#6b7280;font-size:.9rem;text-decoration:none}
+.bl a:hover{color:#bd9657}
+#toast-container{position:fixed;bottom:1rem;left:1rem;z-index:9999;display:flex;flex-direction:column;gap:.5rem}
+@media(max-width:900px){.wrap{flex-direction:column}.left{min-height:35vh}.logo-img{width:200px}}
 @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-7px)}75%{transform:translateX(7px)}}
-.shake{animation:shake .35s ease;}
+.shake{animation:shake .35s ease}
 @keyframes slideInLeft{from{transform:translateX(-100%);opacity:0}to{transform:translateX(0);opacity:1}}</style>
 </head>
 <body>
@@ -68,7 +52,7 @@ body{background:linear-gradient(135deg,#1a1a1a,#2c1b10);min-height:100vh;display
 <div class="wrap">
   <div class="left"><div class="logo-box">
     <img src="./assets/images/logo.png" alt="SHAKER" class="logo-img" onerror="this.style.display='none'">
-    <h1 style="color:#bd9657;font-size:4rem;font-weight:900;margin-top:.5rem;text-shadow:0 0 30px rgba(189,150,87,.8);">SHAKER</h1>
+    <h1 style="color:#bd9657;font-size:4rem;font-weight:900;margin-top:.5rem;text-shadow:0 0 30px rgba(189,150,87,.8)">SHAKER</h1>
   </div></div>
   <div class="right"><div class="card">
     <h1 class="t1">SHAKER</h1>
@@ -90,68 +74,46 @@ body{background:linear-gradient(135deg,#1a1a1a,#2c1b10);min-height:100vh;display
 </div>
 <script>
 (function(){
-    const stEl = document.getElementById('fb-st');
-    if (FB.isOk()) { stEl.textContent='🔥 متصل بـ Firebase'; stEl.className='fb-st ok'; }
-    else { stEl.textContent='⚠️ تعذر الاتصال'; stEl.className='fb-st err'; }
-
-    const _auth = FB.getAuth();
-    if (_auth) {
-        _auth.onAuthStateChanged(async user => {
-            if (!user) return;
-            try {
-                let p = FB.getCachedProfile(user.uid);
-                if (!p || p.uid !== user.uid) p = await FB.readUserProfile(user.uid);
-                if (!p || p.active === false) { await FB.logout(); return; }
-                if (p.role === 'admin')     { window.location.replace('./index.html');     return; }
-                if (p.role === 'moderator') { window.location.replace('./Moderator.html'); return; }
-                await FB.logout();
-            } catch(_) {}
-        });
+  const stEl=document.getElementById('fb-st');
+  if(FB.isOk()){stEl.textContent='🔥 متصل بـ Firebase';stEl.className='fb-st ok';}
+  else{stEl.textContent='⚠️ تعذر الاتصال';stEl.className='fb-st err';}
+  const _auth=FB.getAuth();
+  if(_auth){_auth.onAuthStateChanged(async user=>{
+    if(!user)return;
+    try{
+      let p=FB.getCachedProfile(user.uid);
+      if(!p||p.uid!==user.uid)p=await FB.readUserProfile(user.uid);
+      if(!p||p.active===false){await FB.logout();return;}
+      if(p.role==='admin'){window.location.replace('./index.html');return;}
+      if(p.role==='moderator'){window.location.replace('./Moderator.html');return;}
+      await FB.logout();
+    }catch(_){}
+  });}
+  function showErr(msg){const el=document.getElementById('err-box');el.textContent=msg;el.style.display='block';el.classList.remove('shake');void el.offsetWidth;el.classList.add('shake');}
+  function toggleEye(){const i=document.getElementById('inp-pass'),ic=document.getElementById('eye-ic');if(i.type==='password'){i.type='text';ic.className='fas fa-eye-slash';}else{i.type='password';ic.className='fas fa-eye';}}
+  async function doLogin(){
+    if(!window.Throttle.check('admin_login'))return;
+    document.getElementById('err-box').style.display='none';
+    const email=document.getElementById('inp-email').value.trim();
+    const pass=document.getElementById('inp-pass').value;
+    const btn=document.getElementById('login-btn'),btext=document.getElementById('login-btn-text');
+    if(!email||!pass){showErr('يرجى إدخال البريد الإلكتروني وكلمة المرور');return;}
+    if(!FB.isOk()){showErr('Firebase غير متصل');return;}
+    btn.disabled=true;btext.textContent='جارٍ التحقق...';
+    try{
+      await Auth.loginAdmin(email,pass);
+      window.Throttle.clear('admin_login');
+      window.location.replace('./index.html');
+    }catch(e){
+      window.Throttle.record('admin_login');
+      showErr(e.message);
+      btn.disabled=false;btext.textContent='تسجيل الدخول';
     }
-
-    function showErr(msg) {
-        const el = document.getElementById('err-box');
-        el.textContent = msg;
-        el.style.display = 'block';
-        el.classList.remove('shake');
-        void el.offsetWidth;
-        el.classList.add('shake');
-    }
-
-    function toggleEye() {
-        const i = document.getElementById('inp-pass');
-        const ic = document.getElementById('eye-ic');
-        if (i.type === 'password') { i.type='text'; ic.className='fas fa-eye-slash'; }
-        else { i.type='password'; ic.className='fas fa-eye'; }
-    }
-
-    async function doLogin() {
-        if (!window.Throttle.check('admin_login')) return;
-        document.getElementById('err-box').style.display = 'none';
-        const email = document.getElementById('inp-email').value.trim();
-        const pass = document.getElementById('inp-pass').value;
-        const btn = document.getElementById('login-btn');
-        const btext = document.getElementById('login-btn-text');
-        if (!email || !pass) { showErr('يرجى إدخال البريد الإلكتروني وكلمة المرور'); return; }
-        if (!FB.isOk()) { showErr('Firebase غير متصل'); return; }
-        btn.disabled = true;
-        btext.textContent = 'جارٍ التحقق...';
-        try {
-            await Auth.loginAdmin(email, pass);
-            window.Throttle.clear('admin_login');
-            window.location.replace('./index.html');
-        } catch(e) {
-            window.Throttle.record('admin_login');
-            showErr(e.message);
-            btn.disabled = false;
-            btext.textContent = 'تسجيل الدخول';
-        }
-    }
-
-    document.getElementById('login-btn').addEventListener('click', doLogin);
-    document.getElementById('eye-btn').addEventListener('click', toggleEye);
-    document.getElementById('inp-email').addEventListener('keydown', e => { if (e.key==='Enter') document.getElementById('inp-pass').focus(); });
-    document.getElementById('inp-pass').addEventListener('keydown', e => { if (e.key==='Enter') doLogin(); });
+  }
+  document.getElementById('login-btn').addEventListener('click',doLogin);
+  document.getElementById('eye-btn').addEventListener('click',toggleEye);
+  document.getElementById('inp-email').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('inp-pass').focus();});
+  document.getElementById('inp-pass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
 })();
 </script>
 </body>
