@@ -14,10 +14,11 @@
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
   script-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://www.gstatic.com 'unsafe-inline' 'unsafe-eval';
+  script-src-elem 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://www.gstatic.com 'unsafe-inline';
   style-src  'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://fonts.googleapis.com 'unsafe-inline';
   font-src   https://fonts.gstatic.com https://cdnjs.cloudflare.com data:;
   img-src    'self' https: data: blob:;
-  connect-src 'self' https://*.firebaseio.com wss://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://api.cloudinary.com;
+  connect-src 'self' https://*.firebaseio.com wss://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://api.cloudinary.com https://www.gstatic.com;
   frame-src  'none';
   object-src 'none';
   base-uri   'self';
@@ -1326,18 +1327,7 @@ preview.innerHTML = `<div class="text-center">
 };
 reader.readAsDataURL(file);
 }
-// === Toast Notifications ===
-const Toast = {
-show: (msg, type = 'success') => {
-const colors = { success: 'bg-green-600', error: 'bg-red-600', warning: 'bg-yellow-600', info: 'bg-blue-600' };
-const container = document.getElementById('toast-container');
-const toast = document.createElement('div');
-toast.className = `toast ${colors[type]}`;
-toast.innerHTML = msg;
-container.appendChild(toast);
-setTimeout(() => { toast.style.opacity = '0'; toast.style.transform = 'translateX(-100%)'; setTimeout(() => toast.remove(), 300); }, 3000);
-}
-};
+// Toast provided by ui.js
 // === Stock Alert System ===
 const StockAlerts = {
 getThreshold: () => parseInt(localStorage.getItem('shaker_stock_threshold') || '3'),
@@ -2846,8 +2836,10 @@ window.location.href = 'login.html';
 // === Initialize (v13 — optimized) ===
 window.addEventListener('DOMContentLoaded', async () => {
 const splashScreen = document.getElementById('splashScreen');
+if (splashScreen) { splashScreen.style.visibility='visible'; splashScreen.style.position='fixed'; splashScreen.style.inset='0'; splashScreen.style.zIndex='99999'; }
+document.body.style.visibility='visible';
 // ── Auth Guard (v13: cache-first → instant show, then background verify) ──
-// FB.init() already ran at script-load time — no need to call again.
+if (typeof FB !== "undefined" && FB.init) { try { FB.init(); } catch(e){ console.error("FB.init failed:",e);} }
 const { userData: _admin } = await Auth.guardPage('admin', 'login.html');
 window._adminData = _admin;
 {
