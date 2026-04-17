@@ -4,7 +4,7 @@
 
       "products": {
         ".read":  "auth != null && root.child('shaker/users').child(auth.uid).child('active').val() === true && (root.child('shaker/users').child(auth.uid).child('role').val() === 'admin' || root.child('shaker/users').child(auth.uid).child('role').val() === 'moderator')",
-        ".write": "auth != null && root.child('shaker/users').child(auth.uid).child('role').val() === 'admin' && root.child('shaker/users').child(auth.uid).child('active').val() === true"
+        ".write": "auth != null && root.child('shaker/users').child(auth.uid).child('active').val() === true && (root.child('shaker/users').child(auth.uid).child('role').val() === 'admin' || (root.child('shaker/users').child(auth.uid).child('role').val() === 'moderator' && !data.exists()))"
       },
 
       "inventory": {

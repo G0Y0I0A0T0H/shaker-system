@@ -25,68 +25,101 @@
 <script src="js/store.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/chat.js"></script>
-<script src="js/call.js"></script>
 <script>
-tailwind.config = {
-  darkMode: 'class',
-  theme: { extend: { fontFamily: { sans: ['Tajawal','sans-serif'] }, colors: { brand: { 500:'#6366f1', 600:'#4f46e5', 700:'#4338ca' } } } }
-}
+tailwind.config = { darkMode:'class', theme:{ extend:{ fontFamily:{sans:['Tajawal','sans-serif']}, colors:{ brand:{500:'#6366f1',600:'#4f46e5',700:'#4338ca',900:'#312e81'} } } } }
+// Lazy load Chart.js
+window._loadChartJS = () => { if(window.Chart)return Promise.resolve(); return new Promise((r,j)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js';s.onload=r;s.onerror=j;document.head.appendChild(s);}); };
+requestAnimationFrame(()=>setTimeout(()=>window._loadChartJS(),200));
 </script>
 <style>
-body { font-family: 'Tajawal', sans-serif; visibility: hidden; }
+body { font-family:'Tajawal',sans-serif; visibility:hidden; }
+.sidebar-item.active { background:#4f46e5; color:white; }
+.sidebar-item:hover:not(.active) { background:rgba(99,102,241,.1); }
+.dark .sidebar-item:hover:not(.active) { background:rgba(99,102,241,.15); }
 #toast-container { position:fixed; bottom:1rem; left:1rem; z-index:9999; display:flex; flex-direction:column; gap:.5rem; }
-@keyframes slideInLeft { from { transform:translateX(-100%); opacity:0 } to { transform:translateX(0); opacity:1 } }
+@keyframes slideInLeft { from{transform:translateX(-100%);opacity:0} to{transform:translateX(0);opacity:1} }
+::-webkit-scrollbar{width:6px;height:6px} ::-webkit-scrollbar-track{background:#f1f1f1} ::-webkit-scrollbar-thumb{background:#888;border-radius:3px}
 </style>
 </head>
-<body class="bg-gray-100 dark:bg-gray-900 min-h-screen">
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
 <div id="toast-container"></div>
 
-<!-- TOP BAR -->
-<header class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 sticky top-0 z-30">
-<div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+<!-- Impersonation Banner -->
+<div id="impersonate-banner" class="hidden bg-purple-600 text-white text-center text-sm py-2 px-4 sticky top-0 z-50">
+<i class="fas fa-eye ml-1"></i> أنت تعرض لوحة المشرف كمسؤول — الوضع: مراقبة فقط
+<button onclick="window.close()" class="mr-4 underline">إغلاق</button>
+</div>
+
+<div class="flex h-screen overflow-hidden">
+<!-- SIDEBAR -->
+<aside id="sidebar" class="w-64 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 flex flex-col hidden md:flex z-20">
+<div class="h-16 flex items-center justify-center border-b border-gray-200 dark:border-gray-700 px-4">
 <div class="flex items-center gap-3">
 <div class="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center text-white font-bold">S</div>
 <div>
+<h1 class="text-2xl font-bold text-brand-600">SHAKER</h1>
+<span class="text-xs text-gray-500 block">لوحة المشرف</span>
+</div>
+</div>
+</div>
+<nav class="flex-1 overflow-y-auto py-4">
+<ul class="space-y-1 px-2">
+<li><button onclick="modNav('dashboard')" class="sidebar-item active w-full text-right px-4 py-3 rounded-lg flex items-center gap-3 transition"><i class="fas fa-chart-line w-6"></i> لوحة التحكم</button></li>
+<li><button onclick="modNav('analytics')" class="sidebar-item w-full text-right px-4 py-3 rounded-lg flex items-center gap-3 transition"><i class="fas fa-chart-bar w-6"></i> التحليلات</button></li>
+<li><button onclick="modNav('inventory')" class="sidebar-item w-full text-right px-4 py-3 rounded-lg flex items-center gap-3 transition"><i class="fas fa-boxes w-6"></i> المخزون</button></li>
+<li><button onclick="modNav('orders')" class="sidebar-item w-full text-right px-4 py-3 rounded-lg flex items-center gap-3 transition"><i class="fas fa-shopping-cart w-6"></i> الطلبات</button></li>
+<li><button onclick="modNav('chat')" class="sidebar-item w-full text-right px-4 py-3 rounded-lg flex items-center gap-3 transition"><i class="fas fa-comments w-6"></i> المحادثات</button></li>
+<li><button onclick="modNav('settings')" class="sidebar-item w-full text-right px-4 py-3 rounded-lg flex items-center gap-3 transition"><i class="fas fa-cog w-6"></i> الإعدادات</button></li>
+</ul>
+</nav>
+<div class="p-4 border-t border-gray-200 dark:border-gray-700">
+<div id="mod-user-info" class="text-center text-sm text-gray-500 mb-2 truncate"></div>
+<button onclick="doModLogout()" class="w-full py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm flex items-center justify-center gap-2 transition"><i class="fas fa-sign-out-alt"></i> تسجيل الخروج</button>
+<div id="fb-sidebar-status" class="mt-2 text-center text-xs text-gray-400">🔥 Firebase</div>
+</div>
+</aside>
+
+<!-- MAIN -->
+<main class="flex-1 flex flex-col h-screen overflow-hidden">
+<header class="h-14 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-4 md:hidden">
 <h1 class="text-xl font-bold text-brand-600">SHAKER</h1>
-<span class="text-xs text-gray-500" id="mod-user-info">لوحة المشرف</span>
-</div>
-</div>
-<div class="flex items-center gap-3">
-<!-- Nav tabs -->
-<button onclick="modNav('orders')" id="tab-orders" class="px-4 py-2 rounded-lg text-sm font-semibold bg-brand-600 text-white"><i class="fas fa-shopping-cart ml-1"></i> الطلبات</button>
-<button onclick="modNav('chat')" id="tab-chat" class="px-4 py-2 rounded-lg text-sm font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"><i class="fas fa-comments ml-1"></i> المحادثة</button>
-<div class="w-px h-8 bg-gray-200 dark:bg-gray-700"></div>
-<button onclick="doModLogout()" class="px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm transition"><i class="fas fa-sign-out-alt ml-1"></i> خروج</button>
-</div>
-</div>
+<button onclick="document.getElementById('sidebar').classList.toggle('hidden')" class="text-gray-500"><i class="fas fa-bars"></i></button>
 </header>
+<div id="content-area" class="flex-1 overflow-y-auto p-4 md:p-6">
 
-<!-- ORDERS SECTION -->
-<main id="section-orders" class="max-w-7xl mx-auto p-4 space-y-4">
-<div class="flex justify-between items-center">
-<h2 class="text-xl font-bold"><i class="fas fa-list text-brand-600 ml-2"></i> طلباتي</h2>
-<span class="text-sm text-gray-500" id="orders-count"></span>
-</div>
-<div id="mod-orders-list" class="space-y-3">
-<div class="text-center text-gray-400 py-8">جارٍ التحميل...</div>
-</div>
-</main>
+<!-- DASHBOARD -->
+<section id="sec-dashboard" class="space-y-6">
+<h2 class="text-2xl font-bold"><i class="fas fa-chart-line text-brand-600 ml-2"></i>لوحة التحكم</h2>
+<div id="mod-dash-stats" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
+<div class="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm"><canvas id="mod-dash-chart" height="250"></canvas></div>
+</section>
 
-<!-- CHAT SECTION -->
-<main id="section-chat" class="hidden max-w-4xl mx-auto p-4" style="height:calc(100vh - 5rem)">
+<!-- ANALYTICS -->
+<section id="sec-analytics" class="hidden space-y-6">
+<h2 class="text-2xl font-bold"><i class="fas fa-chart-bar text-brand-600 ml-2"></i>التحليلات</h2>
+<div id="mod-analytics-content" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+</section>
+
+<!-- INVENTORY (read-only) -->
+<section id="sec-inventory" class="hidden space-y-6">
+<h2 class="text-2xl font-bold"><i class="fas fa-boxes text-brand-600 ml-2"></i>المخزون التفصيلي</h2>
+<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-x-auto">
+<table class="w-full text-sm text-right"><thead class="bg-gray-50 dark:bg-gray-700"><tr><th class="p-3">المنتج</th><th class="p-3">اللون</th><th class="p-3">المقاس</th><th class="p-3">المخزون</th></tr></thead><tbody id="mod-inventory-body"></tbody></table>
+</div>
+</section>
+
+<!-- ORDERS -->
+<section id="sec-orders" class="hidden space-y-6">
+<h2 class="text-2xl font-bold"><i class="fas fa-shopping-cart text-brand-600 ml-2"></i>طلباتي</h2>
+<div id="mod-orders-list" class="space-y-3"></div>
+</section>
+
+<!-- CHAT -->
+<section id="sec-chat" class="hidden" style="height:calc(100vh - 6rem)">
 <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm flex flex-col h-full overflow-hidden">
-<div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-<div class="flex items-center gap-3">
+<div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center gap-3">
 <div class="w-8 h-8 rounded-full bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center text-white font-bold text-xs">A</div>
-<div>
-<div class="font-bold text-sm">المدير</div>
-<div class="text-xs text-green-500">محادثة مع الإدارة</div>
-</div>
-</div>
-<div class="flex gap-2">
-<button onclick="ShakerCall.startCall('ADMIN_UID', false)" id="mod-call-voice" class="w-9 h-9 rounded-full bg-green-500 hover:bg-green-600 text-white flex items-center justify-center transition" title="مكالمة صوتية"><i class="fas fa-phone-alt text-sm"></i></button>
-<button onclick="ShakerCall.startCall('ADMIN_UID', true)" id="mod-call-video" class="w-9 h-9 rounded-full bg-blue-500 hover:bg-blue-600 text-white flex items-center justify-center transition" title="مكالمة فيديو"><i class="fas fa-video text-sm"></i></button>
-</div>
+<div><div class="font-bold text-sm">المدير</div><div class="text-xs text-green-500">محادثة مع الإدارة</div></div>
 </div>
 <div id="mod-chat-messages" class="flex-1 overflow-y-auto p-4 space-y-2" style="background:linear-gradient(135deg,#f0f4ff 0%,#e8ecf4 100%)"></div>
 <div class="p-3 border-t border-gray-200 dark:border-gray-700 flex gap-2">
@@ -94,118 +127,196 @@ body { font-family: 'Tajawal', sans-serif; visibility: hidden; }
 <button onclick="ShakerChat.send('mod-chat-input')" class="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-700 text-white flex items-center justify-center hover:shadow-lg transition"><i class="fas fa-paper-plane text-sm"></i></button>
 </div>
 </div>
+</section>
+
+<!-- SETTINGS (limited) -->
+<section id="sec-settings" class="hidden space-y-6">
+<h2 class="text-2xl font-bold"><i class="fas fa-cog text-brand-600 ml-2"></i>الإعدادات</h2>
+<div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm">
+<h3 class="font-bold mb-4">معلومات الحساب</h3>
+<div id="mod-account-info" class="space-y-2 text-sm"></div>
+</div>
+</section>
+
+</div>
 </main>
+</div>
 
 <script>
-let CURRENT_MOD = null;
+let MOD_DATA = null;
+let MOD_UID  = null;
+const statusAr = {'Pending':'قيد الانتظار','Confirmed':'مؤكد','Shipped':'تم الشحن','Delivered':'تم التسليم','Cancelled':'ملغي','Returned':'مرتجع'};
+const statusColors = {'Pending':'bg-yellow-100 text-yellow-700','Confirmed':'bg-blue-100 text-blue-700','Shipped':'bg-purple-100 text-purple-700','Delivered':'bg-green-100 text-green-700','Cancelled':'bg-red-100 text-red-700','Returned':'bg-gray-100 text-gray-700'};
 
-// ── Navigation ─────────────────────────────────
 function modNav(section) {
-    document.getElementById('section-orders').classList.toggle('hidden', section !== 'orders');
-    document.getElementById('section-chat').classList.toggle('hidden', section !== 'chat');
-    document.getElementById('tab-orders').className = section === 'orders'
-        ? 'px-4 py-2 rounded-lg text-sm font-semibold bg-brand-600 text-white'
-        : 'px-4 py-2 rounded-lg text-sm font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700';
-    document.getElementById('tab-chat').className = section === 'chat'
-        ? 'px-4 py-2 rounded-lg text-sm font-semibold bg-brand-600 text-white'
-        : 'px-4 py-2 rounded-lg text-sm font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700';
+    ['dashboard','analytics','inventory','orders','chat','settings'].forEach(s => {
+        const el = document.getElementById('sec-' + s);
+        if (el) el.classList.toggle('hidden', s !== section);
+    });
+    document.querySelectorAll('.sidebar-item').forEach(b => b.classList.remove('active'));
+    event?.target?.closest?.('.sidebar-item')?.classList.add('active');
+    if (section === 'inventory') renderInventory();
+    if (section === 'orders') renderOrders();
+    if (section === 'analytics') renderAnalytics();
+    if (section === 'settings') renderSettings();
 }
 
-// ── Logout ──────────────────────────────────────
 async function doModLogout() {
     try { await FB.logout(); } catch(_) {}
     window.location.replace('Moderator_login.html');
 }
 
-// ── Render orders ───────────────────────────────
-function renderOrders(orders) {
-    const container = document.getElementById('mod-orders-list');
-    const countEl   = document.getElementById('orders-count');
-    if (!container) return;
-    const myOrders = orders.filter(o => o.moderatorUid === CURRENT_MOD?.uid);
-    if (countEl) countEl.textContent = myOrders.length + ' طلب';
+function renderDashboard() {
+    const orders = Store.get('orders').filter(o => o.moderatorUid === MOD_UID || o.moderatorName === (MOD_DATA?.username || MOD_UID));
+    const total = orders.length;
+    const delivered = orders.filter(o => o.status === 'Delivered').length;
+    const pending = orders.filter(o => o.status === 'Pending' || o.status === 'Confirmed').length;
+    const sales = orders.filter(o => o.status !== 'Cancelled' && o.status !== 'Returned').reduce((s,o) => s + (o.total||0), 0);
+    const el = document.getElementById('mod-dash-stats');
+    if (el) el.innerHTML = `
+        <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border-r-4 border-blue-500"><div class="text-3xl font-bold text-blue-600">${total}</div><div class="text-sm text-gray-500">إجمالي الطلبات</div></div>
+        <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border-r-4 border-green-500"><div class="text-3xl font-bold text-green-600">${delivered}</div><div class="text-sm text-gray-500">تم التسليم</div></div>
+        <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border-r-4 border-amber-500"><div class="text-3xl font-bold text-amber-600">${pending}</div><div class="text-sm text-gray-500">قيد المعالجة</div></div>
+        <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border-r-4 border-emerald-500"><div class="text-lg font-bold text-emerald-600">${Utils.formatCurrency(sales)}</div><div class="text-sm text-gray-500">إجمالي المبيعات</div></div>`;
+    // Chart
+    _loadChartJS().then(() => {
+        const ctx = document.getElementById('mod-dash-chart');
+        if (!ctx || !window.Chart) return;
+        if (ctx._chart) ctx._chart.destroy();
+        const last7 = Array.from({length:7}, (_, i) => { const d = new Date(); d.setDate(d.getDate()-6+i); return d; });
+        const data = last7.map(d => {
+            const start = new Date(d); start.setHours(0,0,0,0);
+            const end = new Date(d); end.setHours(23,59,59,999);
+            return orders.filter(o => o.date >= start.getTime() && o.date <= end.getTime()).length;
+        });
+        ctx._chart = new Chart(ctx, { type:'bar', data:{ labels:last7.map(d=>d.toLocaleDateString('ar-EG',{weekday:'short'})), datasets:[{label:'الطلبات',data,backgroundColor:'rgba(99,102,241,.6)',borderRadius:8}] }, options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{stepSize:1}}}} });
+    }).catch(()=>{});
+}
 
-    if (myOrders.length === 0) {
-        container.innerHTML = '<div class="text-center text-gray-400 py-12"><i class="fas fa-inbox text-4xl mb-3 opacity-30"></i><p>لا توجد طلبات بعد</p></div>';
-        return;
-    }
-
-    const statusColors = {
-        'Pending':   'bg-yellow-100 text-yellow-700',
-        'Confirmed': 'bg-blue-100 text-blue-700',
-        'Shipped':   'bg-purple-100 text-purple-700',
-        'Delivered': 'bg-green-100 text-green-700',
-        'Cancelled': 'bg-red-100 text-red-700',
-        'Returned':  'bg-gray-100 text-gray-700'
-    };
-    const statusAr = { 'Pending':'قيد الانتظار', 'Confirmed':'مؤكد', 'Shipped':'تم الشحن', 'Delivered':'تم التسليم', 'Cancelled':'ملغي', 'Returned':'مرتجع' };
-
-    container.innerHTML = myOrders.sort((a,b) => (b.date||0) - (a.date||0)).map(o => {
+function renderOrders() {
+    const orders = Store.get('orders').filter(o => o.moderatorUid === MOD_UID || o.moderatorName === (MOD_DATA?.username || MOD_UID));
+    const el = document.getElementById('mod-orders-list');
+    if (!el) return;
+    if (!orders.length) { el.innerHTML = '<div class="text-center text-gray-400 py-12"><i class="fas fa-inbox text-4xl mb-3 opacity-30"></i><p>لا توجد طلبات</p></div>'; return; }
+    el.innerHTML = orders.sort((a,b) => (b.date||0)-(a.date||0)).map(o => {
         const sc = statusColors[o.status] || 'bg-gray-100 text-gray-700';
         return `<div class="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-100 dark:border-gray-700">
-            <div class="flex justify-between items-start mb-2">
-                <div>
-                    <span class="font-bold text-lg">${Sanitize.html(o.customer || '')}</span>
-                    <span class="text-sm text-gray-400 mr-2">#${o.id ? o.id.slice(-6) : ''}</span>
-                </div>
-                <span class="px-3 py-1 rounded-full text-xs font-bold ${sc}">${statusAr[o.status] || o.status}</span>
-            </div>
-            <div class="flex gap-4 text-sm text-gray-500">
-                <span><i class="fas fa-phone ml-1"></i>${Sanitize.html(o.phone || '')}</span>
-                <span><i class="fas fa-calendar ml-1"></i>${o.date ? new Date(o.date).toLocaleDateString('ar-EG') : '-'}</span>
-                <span class="font-bold text-brand-600">${new Intl.NumberFormat('ar-EG',{style:'currency',currency:'EGP'}).format(o.total||0)}</span>
-            </div>
+            <div class="flex justify-between items-start mb-2"><div><span class="font-bold text-lg">${Sanitize.html(o.customer||'')}</span><span class="text-sm text-gray-400 mr-2">#${o.id?o.id.slice(-6):''}</span></div><span class="px-3 py-1 rounded-full text-xs font-bold ${sc}">${statusAr[o.status]||o.status}</span></div>
+            <div class="flex gap-4 text-sm text-gray-500"><span><i class="fas fa-phone ml-1"></i>${Sanitize.html(o.phone||'')}</span><span><i class="fas fa-calendar ml-1"></i>${o.date?new Date(o.date).toLocaleDateString('ar-EG'):'-'}</span><span class="font-bold text-brand-600">${Utils.formatCurrency(o.total||0)}</span></div>
         </div>`;
     }).join('');
 }
 
-// ── Init ────────────────────────────────────────
+function renderInventory() {
+    const inv = Store.get('inventory');
+    const prods = Store.getObj('products');
+    const el = document.getElementById('mod-inventory-body');
+    if (!el) return;
+    if (!inv.length) { el.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-gray-400">لا يوجد مخزون</td></tr>'; return; }
+    el.innerHTML = inv.map(item => {
+        const prod = prods[item.productId] || {};
+        const low = (item.stock || 0) <= 3;
+        return `<tr class="border-b dark:border-gray-700 ${low?'bg-red-50 dark:bg-red-900/10':''}"><td class="p-3 font-bold">${Sanitize.html(prod.category||'')} - ${Sanitize.html(prod.modelNo||'')}</td><td class="p-3">${Sanitize.html(item.color||'')}</td><td class="p-3">${item.size||''}</td><td class="p-3 ${low?'text-red-600 font-bold':''}">${item.stock||0}</td></tr>`;
+    }).join('');
+}
+
+function renderAnalytics() {
+    const orders = Store.get('orders').filter(o => o.moderatorUid === MOD_UID || o.moderatorName === (MOD_DATA?.username || MOD_UID));
+    const el = document.getElementById('mod-analytics-content');
+    if (!el) return;
+    const byStatus = {};
+    orders.forEach(o => { byStatus[o.status] = (byStatus[o.status]||0) + 1; });
+    el.innerHTML = `
+        <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm"><h3 class="font-bold mb-3">توزيع الحالات</h3><canvas id="mod-status-chart" height="200"></canvas></div>
+        <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm"><h3 class="font-bold mb-3">ملخص الأداء</h3>
+            <div class="space-y-3">
+                ${Object.entries(byStatus).map(([k,v]) => `<div class="flex justify-between items-center"><span class="text-sm">${statusAr[k]||k}</span><span class="font-bold">${v}</span></div>`).join('')}
+            </div>
+        </div>`;
+    _loadChartJS().then(() => {
+        const ctx = document.getElementById('mod-status-chart');
+        if (!ctx || !window.Chart) return;
+        new Chart(ctx, { type:'doughnut', data:{ labels:Object.keys(byStatus).map(k=>statusAr[k]||k), datasets:[{data:Object.values(byStatus),backgroundColor:['#f59e0b','#3b82f6','#8b5cf6','#10b981','#ef4444','#6b7280'],borderWidth:0}] }, options:{responsive:true,plugins:{legend:{position:'bottom',labels:{font:{family:'Tajawal'}}}}} });
+    }).catch(()=>{});
+}
+
+function renderSettings() {
+    const el = document.getElementById('mod-account-info');
+    if (!el || !MOD_DATA) return;
+    el.innerHTML = `
+        <div class="flex justify-between py-2 border-b dark:border-gray-700"><span class="text-gray-500">الاسم</span><span class="font-bold">${Sanitize.html(MOD_DATA.displayName||MOD_DATA.username||'')}</span></div>
+        <div class="flex justify-between py-2 border-b dark:border-gray-700"><span class="text-gray-500">اسم المستخدم</span><span>@${Sanitize.html(MOD_DATA.username||'')}</span></div>
+        <div class="flex justify-between py-2 border-b dark:border-gray-700"><span class="text-gray-500">البريد</span><span>${Sanitize.html(MOD_DATA.email||'')}</span></div>
+        ${MOD_DATA.phone ? `<div class="flex justify-between py-2 border-b dark:border-gray-700"><span class="text-gray-500">الهاتف</span><span>${Sanitize.html(MOD_DATA.phone)}</span></div>` : ''}
+        <div class="flex justify-between py-2 border-b dark:border-gray-700"><span class="text-gray-500">الدور</span><span class="px-2 py-1 bg-indigo-100 text-indigo-600 rounded text-xs">مشرف</span></div>
+        <div class="flex justify-between py-2"><span class="text-gray-500">تاريخ الإنشاء</span><span>${MOD_DATA.createdAt ? new Date(MOD_DATA.createdAt).toLocaleDateString('ar-EG') : '-'}</span></div>`;
+}
+
+// ── INIT ──────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
     if (typeof FB !== 'undefined' && FB.init) { try { FB.init(); } catch(_) {} }
 
+    // Check for impersonation mode
+    const impersonateData = sessionStorage.getItem('shaker_impersonate');
+    const urlParams = new URLSearchParams(window.location.search);
+    const impersonateUid = urlParams.get('impersonate');
+
+    if (impersonateData && impersonateUid) {
+        // Admin is viewing as moderator — show banner, skip auth guard
+        const imp = JSON.parse(impersonateData);
+        if (imp.modUid === impersonateUid && (Date.now() - imp.ts) < 30 * 60 * 1000) {
+            document.getElementById('impersonate-banner')?.classList.remove('hidden');
+            // Load mod profile
+            try {
+                const profile = await FB.readUserProfile(impersonateUid);
+                if (profile) {
+                    MOD_DATA = profile;
+                    MOD_UID = impersonateUid;
+                    document.body.style.visibility = 'visible';
+                    const infoEl = document.getElementById('mod-user-info');
+                    if (infoEl) infoEl.textContent = '👁️ ' + (profile.displayName || profile.username || 'مشرف') + ' (مراقبة)';
+                    const fbSt = document.getElementById('fb-sidebar-status');
+                    if (fbSt) { fbSt.textContent = FB.isOk() ? '🔥 متصل ✅' : '⚠️ غير متصل'; fbSt.style.color = FB.isOk() ? '#4ade80' : '#f87171'; }
+                    if (FB.isOk()) { await Store.syncAll().catch(()=>{}); }
+                    renderDashboard();
+                    return;
+                }
+            } catch(_) {}
+        }
+        sessionStorage.removeItem('shaker_impersonate');
+    }
+
+    // Normal auth guard
     const { user, userData } = await Auth.guardPage('moderator', 'Moderator_login.html');
-    CURRENT_MOD = userData;
+    MOD_DATA = userData;
+    MOD_UID = user.uid;
 
     const infoEl = document.getElementById('mod-user-info');
     if (infoEl) infoEl.textContent = '👤 ' + (userData.displayName || userData.username || 'مشرف');
 
+    const fbSt = document.getElementById('fb-sidebar-status');
+    if (fbSt) { fbSt.textContent = FB.isOk() ? '🔥 متصل ✅' : '⚠️ غير متصل'; fbSt.style.color = FB.isOk() ? '#4ade80' : '#f87171'; }
+
     // Init chat
     ShakerChat.init('moderator', user.uid);
-    ShakerChat.openOwnChat(user.uid, 'mod-chat-messages');
+    ShakerChat.openOwn(user.uid, 'mod-chat-messages');
 
-    // Init call
-    ShakerCall.init('moderator', user.uid);
-
-    // Find admin UID for call buttons
-    try {
-        const db = FB.getDb();
-        if (db) {
-            const snap = await db.ref('shaker/users').orderByChild('role').equalTo('admin').once('value');
-            if (snap.exists()) {
-                const admins = Object.entries(snap.val());
-                if (admins.length > 0) {
-                    const adminUid = admins[0][0];
-                    const voiceBtn = document.getElementById('mod-call-voice');
-                    const videoBtn = document.getElementById('mod-call-video');
-                    if (voiceBtn) voiceBtn.setAttribute('onclick', `ShakerCall.startCall('${adminUid}', false)`);
-                    if (videoBtn) videoBtn.setAttribute('onclick', `ShakerCall.startCall('${adminUid}', true)`);
-                }
-            }
-        }
-    } catch (_) {}
-
-    // Load orders
+    // Sync data
     if (FB.isOk()) {
-        await Store.syncAll().catch(() => {});
-        const orders = Store.get('orders');
-        renderOrders(orders);
-
-        // Realtime orders updates
-        FB.listen('orders', (data) => {
-            const arr = FB.toArray(data);
-            renderOrders(arr);
+        await Store.syncAll().catch(()=>{});
+        // Realtime updates
+        FB.startRealtime(() => {
+            const visible = document.querySelector('[id^="sec-"]:not(.hidden)');
+            if (visible) {
+                const sec = visible.id.replace('sec-','');
+                if (sec === 'dashboard') renderDashboard();
+                if (sec === 'orders') renderOrders();
+                if (sec === 'inventory') renderInventory();
+            }
         });
     }
+
+    renderDashboard();
 });
 </script>
 </body>

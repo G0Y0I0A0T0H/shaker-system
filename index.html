@@ -109,6 +109,8 @@ requestAnimationFrame(() => {
 <script src="js/auth.js"></script>
 <script src="js/store.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/chat.js"></script>
+<script src="js/moderators.js"></script>
 <script>
 // Firebase config is centralized in js/firebase.js
 // DO NOT add config here — use FB module instead
@@ -597,9 +599,11 @@ onchange="app.saveThreshold()">
 <table class="w-full text-sm text-right">
 <thead class="bg-gray-50 dark:bg-gray-700">
 <tr>
-<th class="p-3">اسم المشرف</th>
+<th class="p-3">المشرف</th>
+<th class="p-3">البريد</th>
+<th class="p-3">الهاتف</th>
 <th class="p-3">الحالة</th>
-<th class="p-3">عدد الطلبات</th>
+<th class="p-3">الطلبات</th>
 <th class="p-3">تاريخ الإضافة</th>
 <th class="p-3">إجراءات</th>
 </tr>
@@ -916,223 +920,21 @@ class="bg-green-600 text-white px-6 py-3 rounded-xl hover:bg-green-700 transitio
 // ══════════════════════════════════════════════════════
 // FB.init() — called in DOMContentLoaded below
 // ═══════════════════════════════════════════════════
-// 👑 MODERATOR MANAGEMENT SYSTEM
+// 👑 MODERATOR MANAGEMENT — loaded from js/moderators.js
+// ModMgr.render(), ModMgr.openAdd(), etc. are defined externally
 // ═══════════════════════════════════════════════════
-// ============================================
-// 👮 MODERATOR MANAGEMENT (Firebase Auth v4)
-// ============================================
-const ModMgr = {
-async render() {
-const tbody   = document.getElementById('moderators-table-body');
-const statsEl = document.getElementById('mod-stats-grid');
-if (!FB.isOk()) {
-if(tbody) tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-400">Firebase غير متصل</td></tr>';
-return;
-}
-const mods   = await Auth.getModerators();
-const orders = Store.get('orders');
-if(statsEl) statsEl.innerHTML = mods.length === 0
-? '<div class="col-span-3 text-center text-gray-400 py-4">لا يوجد مشرفون بعد</div>'
-: mods.map(mod => {
-const count = orders.filter(o => o.moderatorName === (mod.username||mod.uid)).length;
-return `<div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border-r-4 border-indigo-500">
-<div class="font-bold text-lg text-indigo-600">${mod.displayName||mod.username||'مشرف'}</div>
-<div class="text-sm text-gray-500">@${mod.username||mod.uid}</div>
-<div class="mt-2 text-2xl font-bold">${count} <span class="text-sm font-normal text-gray-400">طلب</span></div>
-<span class="mt-1 inline-block text-xs px-2 py-1 rounded ${mod.active!==false?'bg-green-100 text-green-600':'bg-gray-100 text-gray-500'}">${mod.active!==false?'نشط':'معطل'}</span>
-</div>`;
-}).join('');
-if(tbody) tbody.innerHTML = mods.length === 0
-? '<tr><td colspan="5" class="p-4 text-center text-gray-400">لا يوجد مشرفون بعد — أضفهم من الزر أعلاه</td></tr>'
-: mods.map(mod => {
-const count = orders.filter(o => o.moderatorName === (mod.username||mod.uid)).length;
-return `<tr class="border-b dark:border-gray-700">
-<td class="p-3 font-bold">${mod.displayName||mod.username||'مشرف'} <span class="text-xs text-gray-400">@${mod.username||mod.uid}</span></td>
-<td class="p-3"><span class="px-2 py-1 rounded text-xs ${mod.active!==false?'bg-green-100 text-green-600':'bg-gray-200 text-gray-500'}">${mod.active!==false?'نشط':'معطل'}</span></td>
-<td class="p-3">${count}</td>
-<td class="p-3 text-xs text-gray-500">${mod.createdAt?new Date(mod.createdAt).toLocaleDateString('ar-EG'):'-'}</td>
-<td class="p-3 flex gap-2 flex-wrap">
-<button onclick="ModMgr.toggleActive('${mod.uid}',${mod.active!==false})" class="text-xs ${mod.active!==false?'bg-red-100 text-red-600':'bg-green-100 text-green-600'} px-2 py-1 rounded">${mod.active!==false?'تعطيل':'تفعيل'}</button>
-<button onclick="ModMgr.delete('${mod.uid}','${mod.username||mod.uid}')" class="text-xs bg-red-100 text-red-600 px-2 py-1 rounded hover:bg-red-200"><i class="fas fa-trash"></i></button>
-</td>
-</tr>`;
-}).join('');
-},
-openAdd() {
-document.getElementById('addModModal')?.remove();
-const html = `<div id="addModModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-<div class="bg-white dark:bg-gray-800 rounded-xl w-full max-w-md p-6 space-y-4">
-<div class="flex justify-between items-center">
-<h3 class="text-xl font-bold">إضافة مشرف جديد</h3>
-<button onclick="document.getElementById('addModModal').remove()" class="text-gray-500"><i class="fas fa-times"></i></button>
-</div>
-<input type="text" id="new-mod-displayname" placeholder="الاسم الكامل" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
-<input type="text" id="new-mod-username" placeholder="اسم المستخدم (إنجليزي بدون مسافات)" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
-<input type="password" id="new-mod-password" placeholder="كلمة المرور (6 أحرف على الأقل)" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
-<input type="password" id="new-mod-password2" placeholder="تأكيد كلمة المرور" class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600">
-<p class="text-xs text-gray-500">يستخدم Firebase Authentication 🔥 — كلمة المرور لا تُحفظ في قاعدة البيانات</p>
-<div class="flex justify-end gap-2 pt-2">
-<button onclick="document.getElementById('addModModal').remove()" class="px-4 py-2 text-gray-500">إلغاء</button>
-<button onclick="ModMgr.save()" class="px-6 py-2 bg-brand-600 text-white rounded hover:bg-brand-700">حفظ</button>
-</div>
-</div></div>`;
-document.body.insertAdjacentHTML('beforeend', html);
-},
-async save() {
-if (!FB.isOk()) { Toast.show('Firebase غير متصل', 'error'); return; }
-const displayName = document.getElementById('new-mod-displayname').value.trim();
-const username    = document.getElementById('new-mod-username').value.trim().toLowerCase().replace(/\s+/g,'');
-const password    = document.getElementById('new-mod-password').value;
-const password2   = document.getElementById('new-mod-password2').value;
-if (!displayName || !username) { Toast.show('الاسم واسم المستخدم مطلوبان', 'error'); return; }
-if (password.length < 6)       { Toast.show('كلمة المرور يجب أن تكون 6 أحرف على الأقل', 'error'); return; }
-if (password !== password2)    { Toast.show('كلمتا المرور غير متطابقتين', 'error'); return; }
-const saveBtn = document.querySelector('#addModModal button.bg-brand-600');
-if (saveBtn) { saveBtn.disabled=true; saveBtn.textContent='جارٍ الإنشاء...'; }
-try {
-await Auth.addModerator(username, password, displayName);
-document.getElementById('addModModal')?.remove();
-Toast.show('✅ تم إضافة @' + username + ' — يسجّل الدخول من Moderator_login.html', 'success');
-ModMgr.render();
-} catch(e) {
-Toast.show('❌ ' + e.message, 'error');
-if (saveBtn) { saveBtn.disabled=false; saveBtn.textContent='حفظ'; }
-}
-},
-async toggleActive(uid, currentlyActive) {
-if (!FB.isOk()) return;
-try {
-await Auth.toggleModActive(uid, currentlyActive);
-Toast.show(currentlyActive ? 'تم تعطيل المشرف' : 'تم تفعيل المشرف', 'success');
-ModMgr.render();
-} catch(e) { Toast.show('❌ ' + e.message, 'error'); }
-},
-async delete(uid, username) {
-if (!confirm('هل أنت متأكد من تعطيل @' + username + '؟ لن يتمكن من الدخول.')) return;
-if (!FB.isOk()) return;
-try {
-await Auth.deleteModerator(uid, username);
-Toast.show('تم تعطيل @' + username, 'success');
-ModMgr.render();
-} catch(e) { Toast.show('❌ ' + e.message, 'error'); }
-}
-};
-// ═══════════════════════════════════════════════════
-// 💬 ADMIN CHAT SYSTEM
+// 💬 ADMIN CHAT — delegates to ShakerChat (js/chat.js)
 // ═══════════════════════════════════════════════════
 const AdminChat = {
-currentMod: null,
-currentModUid: null,
-_listener: null,
 init: () => {
 if (!FB.isOk()) return;
-AdminChat.renderList();
+ShakerChat.init('admin', FB.getAuth()?.currentUser?.uid);
+ShakerChat.renderModList('admin-chat-list');
 },
-renderList: async () => {
-const el = document.getElementById('admin-chat-list');
-if (!el) return;
-let list = [];
-try { list = await Auth.getModerators(); } catch(_) { list = ModMgr.getAll(); }
-list = list.filter(m => !m.deletedAt);
-if (list.length === 0) {
-el.innerHTML = '<div class="p-4 text-sm text-gray-400">لا يوجد مشرفون</div>';
-return;
-}
-el.innerHTML = list.map(mod => {
-const key = mod.uid || mod.id || mod.username;
-const name = Sanitize.html(mod.username || mod.displayName || '');
-const isActive = AdminChat.currentModUid === key || AdminChat.currentMod === mod.username;
-const statusColor = mod.active !== false ? 'bg-green-400' : 'bg-gray-400';
-return `<div class="flex items-center border-b border-gray-100 dark:border-gray-700 ${isActive ? 'bg-brand-50 dark:bg-brand-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-750'}">
-<button onclick="AdminChat.openWith('${key}')" class="flex-1 text-right px-4 py-3 flex items-center gap-3">
-<div class="relative">
-<div class="w-10 h-10 rounded-full bg-brand-600 flex items-center justify-center text-white font-bold text-sm">${(mod.username||'?')[0].toUpperCase()}</div>
-<div class="absolute bottom-0 left-0 w-3 h-3 rounded-full ${statusColor} border-2 border-white dark:border-gray-800"></div>
-</div>
-<div class="text-right min-w-0">
-<div class="font-medium text-sm truncate">${name}</div>
-<div class="text-xs text-gray-400">${mod.active !== false ? 'نشط' : 'معطل'}</div>
-</div>
-</button>
-<button onclick="AdminChat.deleteConversation('${key}')" title="حذف المحادثة" class="px-3 py-3 text-gray-300 hover:text-red-500 transition-colors">
-<i class="fas fa-trash-alt text-xs"></i>
-</button>
-</div>`;
-}).join('');
-},
-openWith: async (usernameOrUid) => {
-AdminChat.currentMod = usernameOrUid;
-// Resolve uid: check local cache first, then load from DB
-let chatUid = null;
-try {
-const mods = await Auth.getModerators();
-const mod = mods.find(m => m.username === usernameOrUid || m.uid === usernameOrUid);
-if (mod && mod.uid) chatUid = mod.uid;
-} catch(_) {}
-if (!chatUid) {
-Toast.show('تعذر تحديد المشرف — تحقق من وجود الحساب', 'error');
-return;
-}
-AdminChat.currentModUid = chatUid;
-if (document.getElementById('adminchat').classList.contains('hidden')) {
-app.nav('adminchat');
-}
-AdminChat.renderList();
-const header = document.getElementById('admin-chat-header');
-if (header) header.textContent = 'محادثة مع: ' + usernameOrUid;
-const inputArea = document.getElementById('admin-chat-input-area');
-if (inputArea) inputArea.classList.remove('hidden');
-if (!FB.isOk()) {
-document.getElementById('admin-chat-messages').innerHTML = '<div class="text-center text-gray-400 py-8">Firebase غير متصل</div>';
-return;
-}
-if (AdminChat._listener) AdminChat._listener();
-// KEY FIX: always use UID as chat path (matches Moderator.html + Firebase Rules)
-const chatRef = FB.getDb().ref('shaker/chats/' + chatUid);
-AdminChat._listener = chatRef.on('value', snap => {
-const msgs = [];
-if (snap.exists()) snap.forEach(child => msgs.push({ id: child.key, ...child.val() }));
-msgs.sort((a, b) => a.time - b.time);
-const container = document.getElementById('admin-chat-messages');
-if (!container) return;
-container.innerHTML = msgs.length === 0 ? '<div class="text-center text-gray-400 py-8">لا توجد رسائل بعد</div>' :
-msgs.map(m => `
-<div class="flex ${m.sender === 'admin' ? 'justify-start' : 'justify-end'}">
-<div class="max-w-xs px-4 py-2 rounded-2xl text-sm ${m.sender === 'admin' ? 'bg-brand-600 text-white rounded-tl-sm' : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-tr-sm'}">
-<div>${Sanitize.html(m.text||'')}</div>
-<div class="text-xs opacity-60 mt-1">${new Date(m.time).toLocaleTimeString('ar-EG', {hour:'2-digit',minute:'2-digit'})}</div>
-</div>
-</div>`).join('');
-container.scrollTop = container.scrollHeight;
-});
-},
-send: () => {
-const chatUid = AdminChat.currentModUid || AdminChat.currentMod;
-if (!chatUid || !FB.isOk()) return;
-const input = document.getElementById('admin-chat-input');
-const text = (input.value || '').trim();
-if (!text || text.length > 2000) return;
-input.value = '';
-FB.getDb().ref('shaker/chats/' + chatUid).push({
-sender: 'admin', text, time: Date.now()
-}).catch(e => Toast.show('فشل الإرسال: ' + e.message, 'error'));
-},
-deleteConversation: async (uidOrUsername) => {
-if (!confirm('هل تريد حذف كل رسائل هذه المحادثة؟ لا يمكن التراجع.')) return;
-if (!FB.isOk()) return;
-try {
-// Resolve to UID strictly — never write to a username-keyed path
-let targetUid = null;
-const mods = await Auth.getModerators();
-const mod = mods.find(m => m.uid === uidOrUsername || m.username === uidOrUsername);
-if (mod && mod.uid) targetUid = mod.uid;
-if (!targetUid) { Toast.show('تعذر تحديد المشرف', 'error'); return; }
-await FB.getDb().ref('shaker/chats/' + targetUid).remove();
-const msgs = document.getElementById('admin-chat-messages');
-if (msgs) msgs.innerHTML = '<div class="text-center text-gray-400 py-8">تم حذف المحادثة</div>';
-Toast.show('تم حذف المحادثة', 'success');
-} catch(e) { Toast.show('فشل الحذف: ' + e.message, 'error'); }
-}
+renderList: () => ShakerChat.renderModList('admin-chat-list'),
+openWith: (uid) => ShakerChat.open(uid, uid),
+send: () => ShakerChat.send('admin-chat-input'),
+deleteConversation: (uid) => ShakerChat.deleteConv(uid)
 };
 // Update sidebar status after DOM loads
 document.addEventListener('DOMContentLoaded', () => {
@@ -2907,6 +2709,7 @@ _origNav(section);
 if (section === 'factory')    { renderFactorySection(); }
 if (section === 'moderators') { ModMgr.render(); }
 if (section === 'settings')   { setTimeout(() => Backup.renderList(), 100); }
+if (section === 'adminchat')  { AdminChat.init(); }
 };
 AreaSelector.init();
 const originalOpen = app.modals.open;
