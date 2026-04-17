@@ -1,34 +1,29 @@
 /**
- * firebase.js — SHAKER v13 (performance-optimized)
- * ═════════════════════════════════════════════════
- * PERFORMANCE OPTIMIZATIONS vs v12:
- *  [P1] User profile cache in localStorage (shaker_user_cache).
- *       - guardPage/login pages get an INSTANT role check from cache.
- *       - Firebase DB read happens in background to VALIDATE the cached data.
- *       - If cache says "admin" but Firebase says "disabled", the background
- *         check catches it and force-redirects.
- *       - Cache is NEVER trusted for writes/mutations — only for fast UI display
- *         and instant redirects on page load.
- *       - Cache is keyed by UID so switching accounts auto-invalidates.
+ * firebase.js — SHAKER v14 (secure logout + secondary app)
+ * ═════════════════════════════════════════════════════════
+ * CHANGES vs v13:
+ *  [S1] logout() now nukes ALL localStorage/sessionStorage to prevent
+ *       cached data from allowing re-entry without authentication.
+ *       Specifically: shaker_user_cache, shaker_products, shaker_inventory,
+ *       shaker_orders, shaker_marketers, shaker_shipping, shaker_nextBillNumber,
+ *       shaker_cache_ver, shaker_mod_session (sessionStorage), and all
+ *       Throttle keys. This ensures that after logout, no cached profile
+ *       or session token can bypass the login screen.
  *
- *  [P2] readUserProfile() now uses cache-first with background refresh.
- *       New signature: readUserProfile(uid, {useCache, refreshInBackground})
- *       Default: cache-first. Callers that need strict freshness pass useCache:false.
+ *  [S2] getSecondaryAuth() — creates and returns a secondary Firebase app
+ *       for user creation WITHOUT disturbing the primary admin session.
+ *       The secondary app is auto-deleted after use via deleteSecondaryApp().
+ *       This is the fix for PERMISSION_DENIED when creating moderators:
+ *       createUserWithEmailAndPassword on the compat SDK can affect the
+ *       primary app's auth state; the secondary app isolates this.
  *
- *  [P3] onAuthChange uses cached profile for instant first callback.
- *       Fires the callback TWICE:
- *         1st: immediately with cached data (or null if no cache) — allows instant UI
- *         2nd: after Firebase DB read completes — authoritative validation
- *       The caller (guardPage) handles both via the `fromCache` flag.
+ * PERFORMANCE: UNCHANGED from v13:
+ *  - Profile cache (P1-P4) still works for instant page loads
+ *  - Cache is cleared on logout to prevent bypass
  *
- *  [P4] init() is idempotent and runs at script-load time (not DOMContentLoaded).
- *       Firebase SDK starts booting immediately when the script is parsed.
- *
- * SECURITY: UNCHANGED from v12:
- *  - NO auto-creation of admin profiles
- *  - NO default role fallbacks
- *  - Fails CLOSED on missing profile / invalid role / DB error
- *  - Cache is optimistic UI only — every access is validated by Firebase
+ * SECURITY: ENHANCED from v13:
+ *  - Logout is now TOTAL — no residual data
+ *  - Secondary app prevents admin session loss during mod creation
  */
 
 const FIREBASE_CONFIG = {
@@ -63,9 +58,7 @@ const FB = (() => {
             const raw = localStorage.getItem(CACHE_KEY);
             if (!raw) return null;
             const c = JSON.parse(raw);
-            // Cache must match the current UID
             if (!c || c.uid !== uid) return null;
-            // Expired cache is still returned but flagged
             c._expired = (Date.now() - (c._cachedAt || 0)) > CACHE_MAX_AGE;
             return c;
         } catch (_) { return null; }
@@ -127,9 +120,6 @@ const FB = (() => {
     // ══════════════════════════════════
     // AUTH STATE — P3: cache-first, then authoritative
     // ══════════════════════════════════
-    // Callback signature: cb(user, role, userData, dbError, meta)
-    //   meta.fromCache: true if this is the fast cached callback
-    //   meta.authoritative: true if this is the Firebase-verified callback
     function onAuthChange(cb) {
         if (!_auth) { cb(null, null, null, null, { fromCache: false, authoritative: true }); return () => {}; }
         return _auth.onAuthStateChanged(async user => {
@@ -144,7 +134,6 @@ const FB = (() => {
             // ── PHASE 1: Instant cache hit ──
             const cached = _cacheGet(uid);
             if (cached && cached.role && cached.active !== false) {
-                // Fire immediately with cached data so UI can show instantly
                 cb(user, cached.role, cached, null, { fromCache: true, authoritative: false });
             }
 
@@ -163,7 +152,6 @@ const FB = (() => {
                     cb(user, null, userData, null, { fromCache: false, authoritative: true });
                     return;
                 }
-                // Update cache with fresh data
                 _cacheSet(uid, userData);
                 cb(user, role, userData, null, { fromCache: false, authoritative: true });
             } catch (e) {
@@ -261,7 +249,6 @@ const FB = (() => {
     async function updateUserField(uid, fields) {
         if (!_ok) throw new Error('Firebase غير متصل');
         await _db.ref(`shaker/users/${uid}`).update(fields);
-        // Refresh cache after update
         if (uid && fields) {
             const cached = _cacheGet(uid);
             if (cached) _cacheSet(uid, { ...cached, ...fields, _cachedAt: undefined });
@@ -508,13 +495,98 @@ const FB = (() => {
     }
 
     // ══════════════════════════════════
-    // LOGOUT — clears cache
+    // SECONDARY APP — S2: for creating users without disturbing admin session
     // ══════════════════════════════════
+    let _secondaryApp = null;
+
+    /**
+     * Creates a secondary Firebase app instance for user creation.
+     * The compat SDK's createUserWithEmailAndPassword can bleed auth state
+     * into the primary app. A separate app instance isolates this completely.
+     *
+     * IMPORTANT: Always call deleteSecondaryApp() in a finally block after use.
+     *
+     * @returns {firebase.auth.Auth} The secondary app's auth instance
+     */
+    function getSecondaryAuth() {
+        const appName = '_shaker_secondary_' + Date.now();
+        _secondaryApp = firebase.initializeApp(FIREBASE_CONFIG, appName);
+        return _secondaryApp.auth();
+    }
+
+    /**
+     * Cleans up the secondary Firebase app after moderator creation.
+     * Signs out the secondary auth (the newly created user) and deletes the app.
+     */
+    async function deleteSecondaryApp() {
+        if (_secondaryApp) {
+            try {
+                await _secondaryApp.auth().signOut().catch(() => {});
+                await _secondaryApp.delete();
+            } catch (e) {
+                console.warn('[FB] Secondary app cleanup failed:', e.message);
+            }
+            _secondaryApp = null;
+        }
+    }
+
+    // ══════════════════════════════════
+    // LOGOUT — S1: TOTAL WIPE
+    // ══════════════════════════════════
+    /**
+     * Comprehensive logout that ensures NO re-entry without fresh authentication.
+     *
+     * Steps:
+     * 1. Stop all Firebase realtime listeners (prevents background writes)
+     * 2. Clear the user profile cache (prevents guardPage cache-hit bypass)
+     * 3. Sign out from Firebase Auth (invalidates the auth session)
+     * 4. Wipe ALL shaker-related localStorage keys:
+     *    - shaker_user_cache (profile cache)
+     *    - shaker_products, shaker_inventory, shaker_orders, etc. (data caches)
+     *    - shaker_nextBillNumber (bill number cache)
+     *    - shaker_cache_ver (cache version marker)
+     *    - _t_* (Throttle rate-limit keys)
+     * 5. Clear ALL sessionStorage (mod session tokens, etc.)
+     * 6. Cancel any pending debounced write timers
+     *
+     * After this executes, Auth.guardPage() will find:
+     *   - No Firebase auth user → immediate redirect to login
+     *   - No cached profile → no cache-hit phase 1 shortcut
+     *   - No session tokens → no sessionStorage bypass
+     */
     async function logout() {
+        // 1. Stop realtime listeners to prevent stale writes
         stopAllListeners();
+
+        // 2. Clear profile cache
         _cacheClear();
+
+        // 3. Firebase Auth sign out
         if (_auth) await _auth.signOut().catch(() => {});
-        try { sessionStorage.removeItem('shaker_mod_session'); } catch (_) {}
+
+        // 4. Wipe ALL shaker-related localStorage keys
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && (
+                key.startsWith('shaker_') ||   // Data caches + profile cache + cache version
+                key.startsWith('_t_')           // Throttle rate-limit keys
+            )) {
+                keysToRemove.push(key);
+            }
+        }
+        keysToRemove.forEach(key => {
+            try { localStorage.removeItem(key); } catch (_) {}
+        });
+
+        // 5. Clear ALL sessionStorage (mod session, any temp data)
+        try { sessionStorage.clear(); } catch (_) {}
+
+        // 6. Cancel pending debounced writes
+        Object.keys(_timers).forEach(key => {
+            clearTimeout(_timers[key]);
+            delete _timers[key];
+        });
     }
 
     // ══════════════════════════════════
@@ -563,6 +635,7 @@ const FB = (() => {
         saveBackup, loadBackups, restoreBackup,
         migrateIfEmpty, log, logout,
         sendChatMessage, listenChat, deleteChatMessage,
+        getSecondaryAuth, deleteSecondaryApp,
         toArray, badge, getDb, getAuth, isOk
     };
 })();

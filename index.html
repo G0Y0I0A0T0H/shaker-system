@@ -279,7 +279,9 @@ to { transform: translateX(0); opacity: 1; }
 <button onclick="app.nav('inventory')" class="text-xs text-red-500 underline mt-1">عرض المخزون</button>
 </div>
 <div class="p-4 border-t border-gray-200 dark:border-gray-700">
-<button onclick="app.toggleTheme()" class="w-full py-2 bg-gray-200 dark:bg-gray-700 rounded text-sm"><i class="fas fa-moon"></i> الوضع الليلي</button>
+<div id="admin-user-info" class="text-center text-sm text-gray-500 dark:text-gray-400 mb-2 truncate"></div>
+<button onclick="app.toggleTheme()" class="w-full py-2 bg-gray-200 dark:bg-gray-700 rounded text-sm mb-2"><i class="fas fa-moon"></i> الوضع الليلي</button>
+<button onclick="doLogout()" class="w-full py-2 bg-red-600 hover:bg-red-700 text-white rounded text-sm flex items-center justify-center gap-2 transition"><i class="fas fa-sign-out-alt"></i> تسجيل الخروج</button>
 <div id="fb-sidebar-status" class="mt-2 text-center text-xs text-gray-400">🔥 Firebase: جارٍ الاتصال...</div>
 </div>
 </aside>
@@ -2864,12 +2866,15 @@ const map = {'auth/wrong-password':'❌ كلمة المرور الحالية غ�
 Toast.show(map[e.code] || '❌ ' + e.message, 'error');
 }
 }
-// === Logout (v13: uses FB.logout which clears cache) ===
+// === Logout (v14: TOTAL wipe — clears ALL caches, session, auth) ===
+// FB.logout() now handles: Firebase signOut, ALL localStorage shaker_* keys,
+// ALL sessionStorage, throttle keys, realtime listeners, and pending timers.
+// window.location.replace() prevents Back button from returning to dashboard.
 async function doLogout() {
 try {
 await FB.logout();
 } catch(e) { console.warn('signOut error:', e); }
-window.location.href = 'login.html';
+window.location.replace('login.html');
 }
 // === Initialize (v13 — optimized) ===
 window.addEventListener('DOMContentLoaded', async () => {

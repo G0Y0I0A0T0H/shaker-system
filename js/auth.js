@@ -1,29 +1,42 @@
 /**
- * auth.js — SHAKER v13 (performance-optimized)
- * ═════════════════════════════════════════════
- * PERFORMANCE OPTIMIZATIONS vs v12:
- *  [P1] guardPage: TWO-PHASE strategy:
- *       Phase 1 (0ms): Check FB.getCachedProfile(). If cached role matches
- *       requiredRole and active !== false → show page INSTANTLY.
- *       Phase 2 (background): Firebase DB read validates the cache.
- *       If validation fails (role changed, account disabled, profile deleted)
- *       → force logout + redirect. This means normal users see zero delay
- *       while security is enforced within ~500ms in the background.
+ * auth.js — SHAKER v14 (secure logout + fixed mod creation)
+ * ══════════════════════════════════════════════════════════
+ * CHANGES vs v13:
  *
- *  [P2] loginAdmin/loginModerator: after successful login, immediately
- *       caches the profile so the next page (index.html / Moderator.html)
- *       can use Phase 1 instant guard. The profile read that login already
- *       did gets reused — no duplicate Firebase call.
+ *  [S1] addModerator() — FIXED PERMISSION_DENIED:
+ *       Root cause: Firebase compat SDK v10's createUserWithEmailAndPassword()
+ *       can silently swap the primary app's auth state to the newly created user,
+ *       even when called on a secondary app instance. This causes the subsequent
+ *       DB write (shaker/users/{uid}) to fail because the auth token now belongs
+ *       to the new user (who has no admin role), not the original admin.
  *
- *  [P3] Guard timeout reduced from 12s → 6s. With cache-first strategy,
- *       the timeout is only hit when there's NO cache AND Firebase is totally
- *       unresponsive. 6s is plenty for that edge case.
+ *       Fix: We now use FB.getSecondaryAuth() which creates a completely isolated
+ *       Firebase app. After creating the user, we:
+ *         1. Capture the new user's UID from the credential
+ *         2. Sign out the secondary app's auth immediately
+ *         3. Delete the secondary app
+ *         4. VERIFY the primary admin is still signed in (re-auth check)
+ *         5. Write the moderator profile using the primary app's DB reference
+ *            (which still has the admin's auth token)
  *
- * SECURITY: UNCHANGED from v12:
+ *       Additionally, we save the admin's UID before the operation and verify it
+ *       hasn't changed after. If it has (edge case), we throw an error instead
+ *       of writing with wrong credentials.
+ *
+ *  [S2] guardPage() — No changes (v13 two-phase cache strategy is kept).
+ *       The cache-first approach still works correctly because FB.logout()
+ *       now clears ALL caches (see firebase.js S1), so after logout there is
+ *       no cache to hit and the guard falls through to the authoritative check.
+ *
+ *  [S3] doLogout() guidance (for index.html/Moderator.html inline scripts):
+ *       The existing doLogout() calls FB.logout() which now does a total wipe.
+ *       After FB.logout() completes, redirect with window.location.replace()
+ *       instead of .href to prevent Back button from returning to the dashboard.
+ *
+ * SECURITY: UNCHANGED from v13 (except tighter mod creation):
  *  - Fails CLOSED on missing profile / invalid role / DB error
  *  - NO auto-creation, NO default roles
- *  - Cache is OPTIMISTIC ONLY — authoritative check always follows
- *  - If authoritative check contradicts cache → logout + redirect
+ *  - Cache is optimistic only — authoritative check always follows
  */
 
 const Auth = (() => {
@@ -40,13 +53,13 @@ const Auth = (() => {
 
         return new Promise(resolve => {
             let settled     = false;
-            let cacheUsed   = false;  // Track if we already resolved from cache
+            let cacheUsed   = false;
 
             const timeoutId = setTimeout(() => {
                 if (settled) return;
                 settled = true;
                 console.error('[Auth] guardPage timeout — redirecting');
-                window.location.href = loginPage;
+                window.location.replace(loginPage);
             }, GUARD_TIMEOUT);
 
             const unsub = FB.onAuthChange(async (user, role, userData, dbError, meta) => {
@@ -55,7 +68,6 @@ const Auth = (() => {
                 // ── PHASE 1: Cache hit → instant resolve ──
                 if (meta.fromCache && !settled) {
                     if (user && role === requiredRole && userData?.active !== false) {
-                        // Show page instantly from cache
                         settled   = true;
                         cacheUsed = true;
                         clearTimeout(timeoutId);
@@ -65,7 +77,6 @@ const Auth = (() => {
                         // DON'T unsubscribe — let Phase 2 run for validation
                         return;
                     }
-                    // Cache says wrong role or inactive → don't show, wait for authoritative
                     return;
                 }
 
@@ -76,47 +87,44 @@ const Auth = (() => {
 
                 // If we already resolved from cache, this is a VALIDATION pass
                 if (cacheUsed) {
-                    // Validate: does authoritative data still agree?
                     if (!user || dbError || !userData || !role ||
                         role !== requiredRole || userData.active === false) {
-                        // Cache was WRONG — force logout
                         console.warn('[Auth] Cache invalidated by authoritative check — logging out');
                         try { await FB.logout(); } catch (_) {}
-                        window.location.href = loginPage;
+                        window.location.replace(loginPage);
                     }
-                    // else: cache was correct, nothing to do — page is already showing
                     return;
                 }
 
-                // No cache was used — standard flow (first-time login, cleared cache, etc.)
+                // No cache was used — standard flow
                 settled = true;
 
-                if (!user) { window.location.href = loginPage; return; }
+                if (!user) { window.location.replace(loginPage); return; }
 
                 if (dbError) {
                     console.error('[Auth] guardPage: DB error — access denied');
                     try { await FB.logout(); } catch (_) {}
-                    window.location.href = loginPage;
+                    window.location.replace(loginPage);
                     return;
                 }
 
                 if (!userData || !role) {
                     try { await FB.logout(); } catch (_) {}
-                    window.location.href = loginPage;
+                    window.location.replace(loginPage);
                     return;
                 }
 
                 if (userData.active === false) {
                     await FB.logout();
-                    window.location.href = loginPage;
+                    window.location.replace(loginPage);
                     return;
                 }
 
                 if (requiredRole && role !== requiredRole) {
-                    if (role === 'admin')     { window.location.href = 'index.html';     return; }
-                    if (role === 'moderator') { window.location.href = 'Moderator.html'; return; }
+                    if (role === 'admin')     { window.location.replace('index.html');     return; }
+                    if (role === 'moderator') { window.location.replace('Moderator.html'); return; }
                     await FB.logout();
-                    window.location.href = loginPage;
+                    window.location.replace(loginPage);
                     return;
                 }
 
@@ -205,52 +213,123 @@ const Auth = (() => {
     }
 
     // ══════════════════════════════════
-    // CREATE MODERATOR (admin-only)
+    // CREATE MODERATOR — S1: FIXED (admin-only, secondary app)
     // ══════════════════════════════════
+    /**
+     * Creates a new moderator account.
+     *
+     * HOW IT WORKS:
+     * 1. Verify the current user is an active admin (fail-closed)
+     * 2. Save the admin's UID for post-operation verification
+     * 3. Create a SECONDARY Firebase app instance (isolated auth)
+     * 4. Use secondaryAuth.createUserWithEmailAndPassword() to create the
+     *    moderator's Firebase Auth account — this does NOT affect the primary
+     *    app's auth state because it's on a separate app instance
+     * 5. Sign out the secondary auth and delete the secondary app
+     * 6. Verify the primary admin session is still intact
+     * 7. Write the moderator's DB profile using the PRIMARY app's DB
+     *    (authenticated as admin — has write permission on shaker/users)
+     *
+     * WHY THIS FIXES PERMISSION_DENIED:
+     * In v13, even with a secondary app, the compat SDK could leak auth state
+     * changes to the primary app. By explicitly verifying the admin session
+     * after secondary app operations and using FB.getDb() (bound to the primary
+     * app) for the DB write, we guarantee the write happens with admin credentials.
+     *
+     * @param {string} username - 3-30 lowercase alphanumeric + underscore
+     * @param {string} password - 6+ characters
+     * @param {string} displayName - Display name for the moderator
+     * @returns {string} The new moderator's UID
+     */
     async function addModerator(username, password, displayName) {
         if (!FB.isOk()) throw new Error('Firebase غير متصل');
 
-        const currentUser = FB.getAuth()?.currentUser;
+        // ── Step 1: Verify caller is active admin ──
+        const primaryAuth = FB.getAuth();
+        const currentUser = primaryAuth?.currentUser;
         if (!currentUser) throw new Error('غير مسجل الدخول');
 
-        // Use cached profile for instant permission check, then validate
-        let callerProfile = FB.getCachedProfile(currentUser.uid);
+        const adminUid = currentUser.uid; // Save for post-op verification
+
+        // Use cached profile for instant permission check, then validate from DB
+        let callerProfile = FB.getCachedProfile(adminUid);
         if (!callerProfile || callerProfile.role !== 'admin') {
-            callerProfile = await FB.readUserProfile(currentUser.uid);
+            callerProfile = await FB.readUserProfile(adminUid);
         }
         if (!callerProfile || callerProfile.role !== 'admin' || callerProfile.active === false) {
-            throw new Error('صلاحيات غير كافية');
+            throw new Error('صلاحيات غير كافية — يجب أن تكون أدمن نشط');
         }
 
+        // ── Step 2: Validate input ──
         if (!/^[a-z0-9_]{3,30}$/.test(username))
-            throw new Error('اسم المستخدم: 3-30 حرف إنجليزي صغير وأرقام فقط');
+            throw new Error('اسم المستخدم: 3-30 حرف إنجليزي صغير وأرقام و _ فقط');
         if (password.length < 6)
             throw new Error('كلمة المرور: 6 أحرف على الأقل');
 
         const email = `${username}@shaker.mod`;
-        let secondaryApp = null;
-        try {
-            secondaryApp = firebase.initializeApp(FIREBASE_CONFIG, 'mod_create_' + Date.now());
-            const secAuth = secondaryApp.auth();
-            let cred;
-            try { cred = await secAuth.createUserWithEmailAndPassword(email, password); }
-            catch (e) { throw _xlate(e); }
-            finally { await secAuth.signOut().catch(() => {}); }
+        let newUid = null;
 
-            const uid = cred.user.uid;
-            await FB.getDb().ref(`shaker/users/${uid}`).set({
-                uid, email, username,
-                displayName: displayName || username,
-                role: 'moderator', active: true, createdAt: Date.now()
-            });
-            FB.log('add_mod', { username, uid });
-            return uid;
-        } finally {
-            if (secondaryApp) {
-                try { await secondaryApp.delete(); }
-                catch (e) { console.warn('[Auth] secondary app cleanup failed:', e.message); }
+        // ── Step 3: Create user on secondary app ──
+        try {
+            const secondaryAuth = FB.getSecondaryAuth();
+
+            try {
+                const cred = await secondaryAuth.createUserWithEmailAndPassword(email, password);
+                newUid = cred.user.uid;
+            } catch (e) {
+                throw _xlate(e);
             }
+
+            // Sign out secondary immediately — we only needed the UID
+            await secondaryAuth.signOut().catch(() => {});
+
+        } finally {
+            // ── Step 4: Always clean up secondary app ──
+            await FB.deleteSecondaryApp();
         }
+
+        if (!newUid) throw new Error('فشل إنشاء الحساب — لم يتم إرجاع UID');
+
+        // ── Step 5: Verify primary admin session is still intact ──
+        // This catches the edge case where the compat SDK leaked auth state
+        const postOpUser = primaryAuth.currentUser;
+        if (!postOpUser || postOpUser.uid !== adminUid) {
+            console.error('[Auth] addModerator: Admin session was disrupted!');
+            // Attempt to recover — but don't auto-login, that's a security risk
+            throw new Error(
+                'تم إنشاء حساب المشرف في Firebase Auth لكن الجلسة تعطلت.\n' +
+                'يرجى تسجيل الدخول مجدداً وسيظهر المشرف بعد إعادة تسجيل الدخول.\n' +
+                'إذا لم يظهر، أعد إنشاءه — سيظهر خطأ "مستخدم بالفعل" مما يعني أن الحساب موجود.'
+            );
+        }
+
+        // ── Step 6: Write moderator profile to DB (using admin's auth) ──
+        const modProfile = {
+            uid:         newUid,
+            email:       email,
+            username:    username,
+            displayName: displayName || username,
+            role:        'moderator',
+            active:      true,
+            createdAt:   Date.now()
+        };
+
+        try {
+            await FB.getDb().ref(`shaker/users/${newUid}`).set(modProfile);
+        } catch (e) {
+            console.error('[Auth] addModerator: DB write failed:', e.message);
+            // The Firebase Auth account was created but the DB profile wasn't.
+            // This is recoverable: admin can re-create (will get email-in-use),
+            // or manually add the profile via Firebase Console.
+            throw new Error(
+                'تم إنشاء حساب المشرف لكن فشل حفظ البيانات: ' + e.message + '\n' +
+                'تحقق من قواعد Firebase — يجب أن يكون الأدمن مفعلاً ولديه صلاحية الكتابة على shaker/users'
+            );
+        }
+
+        // ── Step 7: Log and return ──
+        FB.log('add_mod', { username, uid: newUid });
+        return newUid;
     }
 
     // ══════════════════════════════════
@@ -310,7 +389,7 @@ const Auth = (() => {
                 console.warn('[Auth] Auto-logout: inactivity');
                 _stopActivityListeners();
                 await FB.logout();
-                window.location.href = loginPage;
+                window.location.replace(loginPage);
             }, INACTIVITY_MS);
         };
         const events = ['click','keydown','mousemove','touchstart'];
