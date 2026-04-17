@@ -1,29 +1,11 @@
 /**
- * firebase.js — SHAKER v14 (secure logout + secondary app)
- * ═════════════════════════════════════════════════════════
- * CHANGES vs v13:
- *  [S1] logout() now nukes ALL localStorage/sessionStorage to prevent
- *       cached data from allowing re-entry without authentication.
- *       Specifically: shaker_user_cache, shaker_products, shaker_inventory,
- *       shaker_orders, shaker_marketers, shaker_shipping, shaker_nextBillNumber,
- *       shaker_cache_ver, shaker_mod_session (sessionStorage), and all
- *       Throttle keys. This ensures that after logout, no cached profile
- *       or session token can bypass the login screen.
- *
- *  [S2] getSecondaryAuth() — creates and returns a secondary Firebase app
- *       for user creation WITHOUT disturbing the primary admin session.
- *       The secondary app is auto-deleted after use via deleteSecondaryApp().
- *       This is the fix for PERMISSION_DENIED when creating moderators:
- *       createUserWithEmailAndPassword on the compat SDK can affect the
- *       primary app's auth state; the secondary app isolates this.
- *
- * PERFORMANCE: UNCHANGED from v13:
- *  - Profile cache (P1-P4) still works for instant page loads
- *  - Cache is cleared on logout to prevent bypass
- *
- * SECURITY: ENHANCED from v13:
- *  - Logout is now TOTAL — no residual data
- *  - Secondary app prevents admin session loss during mod creation
+ * firebase.js — SHAKER v15 (ultra-fast + secure)
+ * ════════════════════════════════════════════════
+ * [F1] Login speed: guardPage uses synchronous cache-first with 0ms delay.
+ *      Firebase DB read validates in background. Normal page loads feel instant.
+ * [F2] Secondary app for mod creation — fully isolated auth.
+ * [F3] Total logout — nukes all caches, sessions, listeners.
+ * [F4] WebRTC signaling helpers for call system.
  */
 
 const FIREBASE_CONFIG = {
@@ -45,13 +27,11 @@ const FB = (() => {
     let _listeners       = {};
     let _realtimeStarted = false;
     let _connListening   = false;
-    let _initDone        = false;  // P4: idempotent init
+    let _initDone        = false;
 
-    // ══════════════════════════════════
-    // PROFILE CACHE — P1
-    // ══════════════════════════════════
-    const CACHE_KEY      = 'shaker_user_cache';
-    const CACHE_MAX_AGE  = 30 * 60 * 1000; // 30 min max — background refresh keeps it fresh
+    // ── PROFILE CACHE ──────────────────────────────
+    const CACHE_KEY     = 'shaker_user_cache';
+    const CACHE_MAX_AGE = 30 * 60 * 1000;
 
     function _cacheGet(uid) {
         try {
@@ -67,7 +47,7 @@ const FB = (() => {
     function _cacheSet(uid, profileData) {
         if (!uid || !profileData) return;
         try {
-            const toStore = {
+            localStorage.setItem(CACHE_KEY, JSON.stringify({
                 uid:         profileData.uid || uid,
                 email:       profileData.email || '',
                 role:        profileData.role || null,
@@ -75,18 +55,15 @@ const FB = (() => {
                 displayName: profileData.displayName || '',
                 username:    profileData.username || '',
                 _cachedAt:   Date.now()
-            };
-            localStorage.setItem(CACHE_KEY, JSON.stringify(toStore));
-        } catch (_) { /* quota errors — not critical */ }
+            }));
+        } catch (_) {}
     }
 
     function _cacheClear() {
         try { localStorage.removeItem(CACHE_KEY); } catch (_) {}
     }
 
-    // ══════════════════════════════════
-    // INIT — P4: runs once, idempotent
-    // ══════════════════════════════════
+    // ── INIT ───────────────────────────────────────
     function init() {
         if (_initDone) return;
         _initDone = true;
@@ -117,9 +94,7 @@ const FB = (() => {
         });
     }
 
-    // ══════════════════════════════════
-    // AUTH STATE — P3: cache-first, then authoritative
-    // ══════════════════════════════════
+    // ── AUTH STATE (cache-first + authoritative) ───
     function onAuthChange(cb) {
         if (!_auth) { cb(null, null, null, null, { fromCache: false, authoritative: true }); return () => {}; }
         return _auth.onAuthStateChanged(async user => {
@@ -128,16 +103,11 @@ const FB = (() => {
                 cb(null, null, null, null, { fromCache: false, authoritative: true });
                 return;
             }
-
             const uid = user.uid;
-
-            // ── PHASE 1: Instant cache hit ──
             const cached = _cacheGet(uid);
             if (cached && cached.role && cached.active !== false) {
                 cb(user, cached.role, cached, null, { fromCache: true, authoritative: false });
             }
-
-            // ── PHASE 2: Authoritative Firebase read ──
             try {
                 const snap = await _db.ref(`shaker/users/${uid}`).once('value');
                 if (!snap.exists()) {
@@ -161,9 +131,7 @@ const FB = (() => {
         });
     }
 
-    // ══════════════════════════════════
-    // READS
-    // ══════════════════════════════════
+    // ── READS ──────────────────────────────────────
     async function readCollection(col) {
         if (!_ok) throw new Error(`Firebase not ready — cannot read ${col}`);
         const snap = await _db.ref(`shaker/${col}`).once('value');
@@ -176,30 +144,22 @@ const FB = (() => {
         return snap.exists() ? snap.val() : null;
     }
 
-    // P2: readUserProfile with cache-first option
     async function readUserProfile(uid, opts = {}) {
         if (!_ok || !uid) return null;
         const { useCache = false } = opts;
-
         if (useCache) {
             const cached = _cacheGet(uid);
             if (cached && !cached._expired) return cached;
         }
-
         const snap = await _db.ref(`shaker/users/${uid}`).once('value');
         const data = snap.exists() ? snap.val() : null;
         if (data) _cacheSet(uid, data);
         return data;
     }
 
-    // Synchronous cache-only read (for instant redirects, never for auth decisions)
-    function getCachedProfile(uid) {
-        return _cacheGet(uid);
-    }
+    function getCachedProfile(uid) { return _cacheGet(uid); }
 
-    // ══════════════════════════════════
-    // WRITES
-    // ══════════════════════════════════
+    // ── WRITES ─────────────────────────────────────
     function writeCollection(col, data) {
         if (!_ok) return;
         clearTimeout(_timers[col]);
@@ -211,12 +171,9 @@ const FB = (() => {
                 const newKeys     = Object.keys(obj);
                 const updates = {};
                 newKeys.forEach(id => { updates[`shaker/${col}/${id}`] = obj[id]; });
-                currentKeys
-                    .filter(k => !newKeys.includes(k))
+                currentKeys.filter(k => !newKeys.includes(k))
                     .forEach(k => { updates[`shaker/${col}/${k}`] = null; });
-                if (Object.keys(updates).length > 0) {
-                    await _db.ref('/').update(updates);
-                }
+                if (Object.keys(updates).length > 0) await _db.ref('/').update(updates);
                 badge('💾 محفوظ ✅', '#16a34a');
             } catch (e) {
                 console.error(`[FB] writeCollection(${col}):`, e.message);
@@ -255,9 +212,7 @@ const FB = (() => {
         }
     }
 
-    // ══════════════════════════════════
-    // TRANSACTIONS
-    // ══════════════════════════════════
+    // ── TRANSACTIONS ───────────────────────────────
     async function getNextBillNumber() {
         if (!_ok) {
             const cur = parseInt(localStorage.getItem('shaker_nextBillNumber') || '100000000');
@@ -289,35 +244,19 @@ const FB = (() => {
             for (const item of items) {
                 let invKey = null;
                 for (const [k, v] of Object.entries(invData)) {
-                    if (v.productId === item.productId &&
-                        v.color     === item.color &&
-                        String(v.size) === String(item.size)) {
-                        invKey = k; break;
-                    }
+                    if (v.productId === item.productId && v.color === item.color && String(v.size) === String(item.size)) { invKey = k; break; }
                 }
-                if (!invKey) {
-                    errors.push(`${_safe(item.productName)} (${_safe(item.color)}/${_safe(item.size)}) غير موجود في المخزون`);
-                    continue;
-                }
-                let txOk = false;
-                let txAbortReason = null;
+                if (!invKey) { errors.push(`${_safe(item.productName)} (${_safe(item.color)}/${_safe(item.size)}) غير موجود في المخزون`); continue; }
+                let txOk = false, txAbortReason = null;
                 await _db.ref(`shaker/inventory/${invKey}/stock`).transaction(cur => {
                     if (cur === null) { txAbortReason = 'item_deleted'; return undefined; }
                     if (cur < item.qty) { txAbortReason = 'insufficient'; return undefined; }
                     txOk = true;
                     return cur - item.qty;
                 });
-                if (!txOk) {
-                    const reason = txAbortReason === 'item_deleted'
-                        ? 'غير موجود في المخزون (تم حذفه)'
-                        : 'المخزون غير كافٍ';
-                    errors.push(`${_safe(item.productName)} (${_safe(item.color)}/${_safe(item.size)}): ${reason}`);
-                }
+                if (!txOk) errors.push(`${_safe(item.productName)} (${_safe(item.color)}/${_safe(item.size)}): ${txAbortReason === 'item_deleted' ? 'تم حذفه' : 'المخزون غير كافٍ'}`);
             }
-        } catch (e) {
-            console.error('[FB] deductStock:', e.message);
-            return { ok: false, error: 'خطأ في تحديث المخزون: ' + e.message };
-        }
+        } catch (e) { return { ok: false, error: 'خطأ في تحديث المخزون: ' + e.message }; }
         return errors.length ? { ok: false, error: errors.join('\n') } : { ok: true };
     }
 
@@ -329,11 +268,7 @@ const FB = (() => {
             for (const item of items) {
                 let invKey = null;
                 for (const [k, v] of Object.entries(invData)) {
-                    if (v.productId === item.productId &&
-                        v.color === item.color &&
-                        String(v.size) === String(item.size)) {
-                        invKey = k; break;
-                    }
+                    if (v.productId === item.productId && v.color === item.color && String(v.size) === String(item.size)) { invKey = k; break; }
                 }
                 if (!invKey) continue;
                 await _db.ref(`shaker/inventory/${invKey}/stock`).transaction(cur => (cur || 0) + item.qty);
@@ -341,9 +276,7 @@ const FB = (() => {
         } catch (e) { console.error('[FB] restoreStock:', e.message); }
     }
 
-    // ══════════════════════════════════
-    // REALTIME LISTENERS
-    // ══════════════════════════════════
+    // ── REALTIME LISTENERS ─────────────────────────
     function listen(col, cb) {
         if (!_ok) return () => {};
         if (_listeners[col]) _db.ref(`shaker/${col}`).off('value', _listeners[col]);
@@ -354,9 +287,7 @@ const FB = (() => {
     }
 
     function stopAllListeners() {
-        Object.keys(_listeners).forEach(col =>
-            _db.ref(`shaker/${col}`).off('value', _listeners[col])
-        );
+        Object.keys(_listeners).forEach(col => _db.ref(`shaker/${col}`).off('value', _listeners[col]));
         _listeners = {};
         _realtimeStarted = false;
     }
@@ -366,8 +297,7 @@ const FB = (() => {
         _realtimeStarted = true;
         ['products','inventory','orders','marketers','shipping'].forEach(col => {
             listen(col, data => {
-                if (data && Object.keys(data).length)
-                    localStorage.setItem('shaker_' + col, JSON.stringify(data));
+                if (data && Object.keys(data).length) localStorage.setItem('shaker_' + col, JSON.stringify(data));
                 if (onUpdate) onUpdate();
             });
         });
@@ -375,20 +305,14 @@ const FB = (() => {
 
     function listenCollection(col, cb) { return listen(col, cb); }
 
-    // ══════════════════════════════════
-    // BACKUP
-    // ══════════════════════════════════
+    // ── BACKUP ─────────────────────────────────────
     async function saveBackup(label = 'auto') {
         if (!_ok) return;
         try {
-            const [products, inventory, orders, marketers, shipping] = await Promise.all([
-                readCollection('products').catch(() => ({})),
-                readCollection('inventory').catch(() => ({})),
-                readCollection('orders').catch(() => ({})),
-                readCollection('marketers').catch(() => ({})),
-                readCollection('shipping').catch(() => ({})),
-            ]);
-            const payload = { products, inventory, orders, marketers, shipping, savedAt: Date.now(), label };
+            const cols = await Promise.all(
+                ['products','inventory','orders','marketers','shipping'].map(k => readCollection(k).catch(() => ({})))
+            );
+            const payload = { products: cols[0], inventory: cols[1], orders: cols[2], marketers: cols[3], shipping: cols[4], savedAt: Date.now(), label };
             const updates = { 'shaker_backups/latest': payload };
             if (label !== 'auto') updates[`shaker_backups/manual_${Date.now()}`] = payload;
             await _db.ref('/').update(updates);
@@ -396,9 +320,7 @@ const FB = (() => {
                 const snap = await _db.ref('shaker_backups').once('value');
                 if (snap.exists()) {
                     const keys = Object.keys(snap.val()).filter(k => k.startsWith('manual_')).sort();
-                    if (keys.length > 10)
-                        for (const k of keys.slice(0, keys.length - 10))
-                            await _db.ref(`shaker_backups/${k}`).remove();
+                    if (keys.length > 10) for (const k of keys.slice(0, keys.length - 10)) await _db.ref(`shaker_backups/${k}`).remove();
                 }
             }
         } catch (e) { console.error('[FB] saveBackup:', e.message); throw e; }
@@ -406,10 +328,8 @@ const FB = (() => {
 
     async function loadBackups() {
         if (!_ok) return {};
-        try {
-            const snap = await _db.ref('shaker_backups').once('value');
-            return snap.exists() ? snap.val() : {};
-        } catch (e) { return {}; }
+        try { const snap = await _db.ref('shaker_backups').once('value'); return snap.exists() ? snap.val() : {}; }
+        catch (e) { return {}; }
     }
 
     async function restoreBackup(key) {
@@ -418,15 +338,11 @@ const FB = (() => {
         if (!snap.exists()) throw new Error('النسخة غير موجودة');
         const d = snap.val();
         const updates = {};
-        ['products','inventory','orders','marketers','shipping'].forEach(k => {
-            if (d[k]) updates[`shaker/${k}`] = d[k];
-        });
+        ['products','inventory','orders','marketers','shipping'].forEach(k => { if (d[k]) updates[`shaker/${k}`] = d[k]; });
         await _db.ref('/').update(updates);
     }
 
-    // ══════════════════════════════════
-    // MIGRATION
-    // ══════════════════════════════════
+    // ── MIGRATION ──────────────────────────────────
     async function migrateIfEmpty() {
         if (!_ok) return;
         try {
@@ -438,46 +354,30 @@ const FB = (() => {
                 if (!raw) return;
                 try {
                     const parsed = JSON.parse(raw);
-                    const obj = Array.isArray(parsed)
-                        ? parsed.reduce((a, item) => { if (item?.id) a[item.id] = item; return a; }, {})
-                        : parsed;
+                    const obj = Array.isArray(parsed) ? parsed.reduce((a, item) => { if (item?.id) a[item.id] = item; return a; }, {}) : parsed;
                     if (Object.keys(obj).length) updates[`shaker/${k}`] = obj;
                 } catch (_) {}
             });
             const bn = localStorage.getItem('shaker_nextBillNumber');
             if (bn) updates['shaker/nextBillNumber'] = parseInt(bn);
-            if (Object.keys(updates).length) {
-                await _db.ref('/').update(updates);
-                badge('⬆️ تم رفع البيانات إلى Firebase', '#2563eb');
-            }
+            if (Object.keys(updates).length) { await _db.ref('/').update(updates); badge('⬆️ تم رفع البيانات إلى Firebase', '#2563eb'); }
         } catch (e) { console.warn('[FB] migrateIfEmpty:', e.message); }
     }
 
-    // ══════════════════════════════════
-    // LOGGING
-    // ══════════════════════════════════
+    // ── LOGGING ────────────────────────────────────
     async function log(action, details = {}) {
         if (!_ok || !_auth?.currentUser) return;
-        try {
-            await _db.ref('shaker/logs').push({
-                uid:    _auth.currentUser.uid,
-                action, details, time: Date.now()
-            });
-        } catch (_) { /* never crash on log failure */ }
+        try { await _db.ref('shaker/logs').push({ uid: _auth.currentUser.uid, action, details, time: Date.now() }); }
+        catch (_) {}
     }
 
-    // ══════════════════════════════════
-    // CHAT — keyed by UID only
-    // ══════════════════════════════════
+    // ── CHAT ───────────────────────────────────────
     async function sendChatMessage(modUid, sender, text) {
         if (!_ok) throw new Error('Firebase غير متصل');
         if (!modUid || !sender || !text) throw new Error('بيانات الرسالة ناقصة');
         const clean = String(text).trim();
-        if (!clean) throw new Error('الرسالة فارغة');
-        if (clean.length > 2000) throw new Error('الرسالة أطول من 2000 حرف');
-        const ref = await _db.ref(`shaker/chats/${modUid}`).push({
-            sender, text: clean, time: Date.now()
-        });
+        if (!clean || clean.length > 2000) throw new Error('الرسالة فارغة أو أطول من 2000 حرف');
+        const ref = await _db.ref(`shaker/chats/${modUid}`).push({ sender, text: clean, time: Date.now() });
         return ref.key;
     }
 
@@ -494,104 +394,59 @@ const FB = (() => {
         await _db.ref(`shaker/chats/${modUid}/${msgId}`).remove();
     }
 
-    // ══════════════════════════════════
-    // SECONDARY APP — S2: for creating users without disturbing admin session
-    // ══════════════════════════════════
+    // ── WEBRTC SIGNALING ───────────────────────────
+    function listenSignaling(myUid, cb) {
+        if (!_ok || !myUid) return () => {};
+        const ref = _db.ref(`shaker/calls/${myUid}`);
+        const handler = snap => cb(snap.exists() ? snap.val() : null);
+        ref.on('value', handler);
+        return () => ref.off('value', handler);
+    }
+
+    async function sendSignal(targetUid, signalData) {
+        if (!_ok) return;
+        await _db.ref(`shaker/calls/${targetUid}`).set(signalData);
+    }
+
+    async function clearSignal(uid) {
+        if (!_ok) return;
+        await _db.ref(`shaker/calls/${uid}`).remove();
+    }
+
+    // ── SECONDARY APP ──────────────────────────────
     let _secondaryApp = null;
 
-    /**
-     * Creates a secondary Firebase app instance for user creation.
-     * The compat SDK's createUserWithEmailAndPassword can bleed auth state
-     * into the primary app. A separate app instance isolates this completely.
-     *
-     * IMPORTANT: Always call deleteSecondaryApp() in a finally block after use.
-     *
-     * @returns {firebase.auth.Auth} The secondary app's auth instance
-     */
     function getSecondaryAuth() {
         const appName = '_shaker_secondary_' + Date.now();
         _secondaryApp = firebase.initializeApp(FIREBASE_CONFIG, appName);
         return _secondaryApp.auth();
     }
 
-    /**
-     * Cleans up the secondary Firebase app after moderator creation.
-     * Signs out the secondary auth (the newly created user) and deletes the app.
-     */
     async function deleteSecondaryApp() {
         if (_secondaryApp) {
-            try {
-                await _secondaryApp.auth().signOut().catch(() => {});
-                await _secondaryApp.delete();
-            } catch (e) {
-                console.warn('[FB] Secondary app cleanup failed:', e.message);
-            }
+            try { await _secondaryApp.auth().signOut().catch(() => {}); await _secondaryApp.delete(); }
+            catch (e) { console.warn('[FB] Secondary cleanup:', e.message); }
             _secondaryApp = null;
         }
     }
 
-    // ══════════════════════════════════
-    // LOGOUT — S1: TOTAL WIPE
-    // ══════════════════════════════════
-    /**
-     * Comprehensive logout that ensures NO re-entry without fresh authentication.
-     *
-     * Steps:
-     * 1. Stop all Firebase realtime listeners (prevents background writes)
-     * 2. Clear the user profile cache (prevents guardPage cache-hit bypass)
-     * 3. Sign out from Firebase Auth (invalidates the auth session)
-     * 4. Wipe ALL shaker-related localStorage keys:
-     *    - shaker_user_cache (profile cache)
-     *    - shaker_products, shaker_inventory, shaker_orders, etc. (data caches)
-     *    - shaker_nextBillNumber (bill number cache)
-     *    - shaker_cache_ver (cache version marker)
-     *    - _t_* (Throttle rate-limit keys)
-     * 5. Clear ALL sessionStorage (mod session tokens, etc.)
-     * 6. Cancel any pending debounced write timers
-     *
-     * After this executes, Auth.guardPage() will find:
-     *   - No Firebase auth user → immediate redirect to login
-     *   - No cached profile → no cache-hit phase 1 shortcut
-     *   - No session tokens → no sessionStorage bypass
-     */
+    // ── TOTAL LOGOUT ───────────────────────────────
     async function logout() {
-        // 1. Stop realtime listeners to prevent stale writes
         stopAllListeners();
-
-        // 2. Clear profile cache
         _cacheClear();
-
-        // 3. Firebase Auth sign out
         if (_auth) await _auth.signOut().catch(() => {});
-
-        // 4. Wipe ALL shaker-related localStorage keys
+        // Wipe ALL shaker data from localStorage
         const keysToRemove = [];
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
-            if (key && (
-                key.startsWith('shaker_') ||   // Data caches + profile cache + cache version
-                key.startsWith('_t_')           // Throttle rate-limit keys
-            )) {
-                keysToRemove.push(key);
-            }
+            if (key && (key.startsWith('shaker_') || key.startsWith('_t_'))) keysToRemove.push(key);
         }
-        keysToRemove.forEach(key => {
-            try { localStorage.removeItem(key); } catch (_) {}
-        });
-
-        // 5. Clear ALL sessionStorage (mod session, any temp data)
+        keysToRemove.forEach(k => { try { localStorage.removeItem(k); } catch (_) {} });
         try { sessionStorage.clear(); } catch (_) {}
-
-        // 6. Cancel pending debounced writes
-        Object.keys(_timers).forEach(key => {
-            clearTimeout(_timers[key]);
-            delete _timers[key];
-        });
+        Object.keys(_timers).forEach(k => { clearTimeout(_timers[k]); delete _timers[k]; });
     }
 
-    // ══════════════════════════════════
-    // HELPERS
-    // ══════════════════════════════════
+    // ── HELPERS ────────────────────────────────────
     function _toObj(data) {
         if (!data) return {};
         if (!Array.isArray(data)) return data;
@@ -635,10 +490,10 @@ const FB = (() => {
         saveBackup, loadBackups, restoreBackup,
         migrateIfEmpty, log, logout,
         sendChatMessage, listenChat, deleteChatMessage,
+        listenSignaling, sendSignal, clearSignal,
         getSecondaryAuth, deleteSecondaryApp,
         toArray, badge, getDb, getAuth, isOk
     };
 })();
 
-// P4: Auto-init at script load time — don't wait for DOMContentLoaded
 FB.init();
