@@ -1,272 +1,123 @@
-// ===== FILE: js/chat.js =====
-// ShakerChat — Real-time WhatsApp-like chat system
-// UID-based only. No username fallbacks.
-// Used by both admin (index.html) and moderator (Moderator.html)
-'use strict';
-
+/**
+ * chat.js — SHAKER v17
+ * Real-time WhatsApp-style chat.
+ * UID-only. Admin full control. Moderator write-only.
+ */
 const ShakerChat = (() => {
-    let _role = null;       // 'admin' or 'moderator'
-    let _myUid = null;      // Current user's UID
-    let _activeModUid = null; // Currently open chat (moderator UID)
-    let _listener = null;   // Firebase realtime listener ref
-    let _messagesContainerId = null; // DOM element ID for messages
-    let _isMuted = false;
+    let _modUid   = null;
+    let _unsub    = null;
+    let _role     = null;
+    let _myUid    = null;
 
-    // ── Init ──────────────────────────────────────────
-    function init(role, uid) {
-        _role = role;
-        _myUid = uid;
-        _activeModUid = null;
-        _detachListener();
-    }
+    function init(role, myUid) { _role = role; _myUid = myUid; }
 
-    // ── Detach existing listener ──────────────────────
-    function _detachListener() {
-        if (_listener) {
-            try { _listener.off(); } catch (_) {}
-            _listener = null;
-        }
-    }
-
-    // ── Render moderator list (admin side) ────────────
-    function renderModList(containerId) {
-        if (!FB.isOk()) return;
-        const container = document.getElementById(containerId);
-        if (!container) return;
-
-        FB.getDb().ref('shaker/users').orderByChild('role').equalTo('moderator').once('value', snap => {
-            const users = snap.val() || {};
-            const mods = Object.entries(users)
-                .filter(([, u]) => u.active !== false)
-                .map(([uid, u]) => ({ uid, name: u.displayName || u.username || uid }));
-
-            if (!mods.length) {
-                container.innerHTML = '<div class="p-4 text-center text-gray-400 text-sm">لا يوجد مشرفون</div>';
-                return;
-            }
-
-            container.innerHTML = mods.map(m => `
-                <button onclick="AdminChat.openWith('${m.uid}')"
-                    class="w-full text-right px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition flex items-center gap-3 ${_activeModUid === m.uid ? 'bg-brand-50 dark:bg-brand-900/20 border-r-4 border-brand-500' : ''}">
-                    <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                        ${(m.name || '?')[0].toUpperCase()}
-                    </div>
-                    <div class="flex-1 min-w-0">
-                        <div class="font-bold text-sm truncate">${_escHtml(m.name)}</div>
-                        <div class="text-xs text-gray-400">UID: ${m.uid.slice(0, 8)}…</div>
-                    </div>
+    async function renderModList(containerId) {
+        const el = document.getElementById(containerId);
+        if (!el || !FB.isOk()) return;
+        let mods = [];
+        try { mods = await Auth.getModerators(); } catch (_) {}
+        mods = mods.filter(m => !m.deletedAt);
+        if (!mods.length) { el.innerHTML = '<div class="p-4 text-sm text-gray-400 text-center">لا يوجد مشرفون</div>'; return; }
+        el.innerHTML = mods.map(mod => {
+            const uid = mod.uid, name = _e(mod.displayName || mod.username || '?');
+            const active = _modUid === uid;
+            const dot = mod.active !== false ? 'bg-green-400' : 'bg-gray-400';
+            return `<div class="flex items-center border-b border-gray-100 dark:border-gray-700 ${active ? 'bg-amber-50 dark:bg-amber-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'} transition-colors">
+                <button onclick="ShakerChat.open('${uid}','${_e(mod.username||mod.displayName||'')}')" class="flex-1 text-right px-4 py-3 flex items-center gap-3">
+                    <div class="relative"><div class="w-10 h-10 rounded-full bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center text-white font-bold text-sm shadow">${(mod.username||'?')[0].toUpperCase()}</div><div class="absolute -bottom-0.5 -left-0.5 w-3 h-3 rounded-full ${dot} border-2 border-white dark:border-gray-800"></div></div>
+                    <div class="text-right min-w-0"><div class="font-semibold text-sm truncate">${name}</div><div class="text-xs text-gray-400">${mod.active!==false?'متصل':'غير نشط'}</div></div>
                 </button>
-            `).join('');
-        });
-    }
-
-    // ── Open chat with a moderator (admin or moderator side) ──
-    function open(modUid, resolvedUid) {
-        if (!FB.isOk() || !modUid) return;
-        const uid = resolvedUid || modUid;
-        _activeModUid = uid;
-
-        // Update header (admin side)
-        const header = document.getElementById('admin-chat-header');
-        if (header) {
-            FB.getDb().ref('shaker/users/' + uid).once('value', snap => {
-                const u = snap.val();
-                const name = u ? (u.displayName || u.username || uid) : uid;
-                header.innerHTML = `
-                    <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center text-white text-xs font-bold">${(name || '?')[0].toUpperCase()}</div>
-                        <div><div class="font-bold">${_escHtml(name)}</div><div class="text-xs text-gray-400">محادثة مباشرة</div></div>
-                    </div>
-                    <button onclick="AdminChat.deleteConversation('${uid}')" class="text-red-500 hover:text-red-700 text-sm" title="حذف المحادثة"><i class="fas fa-trash"></i></button>
-                `;
-                header.classList.add('flex', 'justify-between', 'items-center');
-            });
-        }
-
-        // Show input area (admin side)
-        const inputArea = document.getElementById('admin-chat-input-area');
-        if (inputArea) inputArea.classList.remove('hidden');
-
-        // Attach realtime listener
-        _attachListener(uid, 'admin-chat-messages');
-
-        // Re-render mod list to highlight active
-        renderModList('admin-chat-list');
-    }
-
-    // ── Open own chat (moderator side) ────────────────
-    function openOwn(modUid, messagesContainerId) {
-        if (!FB.isOk() || !modUid) return;
-        _activeModUid = modUid;
-        _messagesContainerId = messagesContainerId;
-
-        // Check mute status
-        _checkMuted(modUid);
-
-        // Attach realtime listener
-        _attachListener(modUid, messagesContainerId);
-    }
-
-    // ── Check if moderator is muted ───────────────────
-    function _checkMuted(uid) {
-        if (!FB.isOk()) return;
-        FB.getDb().ref('shaker/users/' + uid + '/muted').on('value', snap => {
-            _isMuted = snap.val() === true;
-        });
-    }
-
-    // ── Attach realtime listener ──────────────────────
-    function _attachListener(modUid, containerId) {
-        _detachListener();
-        if (!FB.isOk() || !modUid) return;
-
-        const ref = FB.getDb().ref('shaker/chats/' + modUid);
-        _listener = ref;
-
-        ref.on('value', snap => {
-            const data = snap.val() || {};
-            const messages = Object.entries(data)
-                .map(([id, msg]) => ({ id, ...msg }))
-                .sort((a, b) => (a.time || 0) - (b.time || 0));
-
-            _renderMessages(messages, containerId);
-        });
-    }
-
-    // ── Render messages (WhatsApp-like bubbles) ───────
-    function _renderMessages(messages, containerId) {
-        const container = document.getElementById(containerId);
-        if (!container) return;
-
-        const isDark = document.documentElement.classList.contains('dark');
-
-        if (!messages.length) {
-            container.innerHTML = `
-                <div class="flex flex-col items-center justify-center h-full text-gray-400">
-                    <i class="fas fa-comments text-4xl mb-3 opacity-30"></i>
-                    <p class="text-sm">لا توجد رسائل بعد</p>
-                    <p class="text-xs mt-1">ابدأ المحادثة الآن</p>
-                </div>`;
-            return;
-        }
-
-        container.innerHTML = messages.map(msg => {
-            const isMe = msg.from === _myUid;
-            const time = msg.time ? new Date(msg.time).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : '';
-            const date = msg.time ? new Date(msg.time).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' }) : '';
-
-            if (isMe) {
-                return `
-                    <div class="flex justify-end mb-2">
-                        <div class="max-w-[75%] ${isDark ? 'bg-indigo-700' : 'bg-indigo-500'} text-white rounded-2xl rounded-bl-md px-4 py-2 shadow-sm">
-                            <div class="text-sm leading-relaxed break-words">${_escHtml(msg.text || '')}</div>
-                            <div class="text-[10px] opacity-70 mt-1 text-left">${time} · ${date}</div>
-                        </div>
-                    </div>`;
-            } else {
-                return `
-                    <div class="flex justify-start mb-2">
-                        <div class="max-w-[75%] ${isDark ? 'bg-gray-700' : 'bg-white'} ${isDark ? 'text-gray-100' : 'text-gray-800'} rounded-2xl rounded-br-md px-4 py-2 shadow-sm border ${isDark ? 'border-gray-600' : 'border-gray-200'}">
-                            <div class="text-sm leading-relaxed break-words">${_escHtml(msg.text || '')}</div>
-                            <div class="text-[10px] ${isDark ? 'text-gray-400' : 'text-gray-500'} mt-1 text-left">${time} · ${date}</div>
-                        </div>
-                    </div>`;
-            }
+                <button onclick="ShakerChat.deleteConv('${uid}')" title="حذف المحادثة" class="px-3 py-3 text-gray-300 hover:text-red-500 transition"><i class="fas fa-trash-alt text-xs"></i></button>
+            </div>`;
         }).join('');
-
-        // Auto scroll to bottom
-        requestAnimationFrame(() => {
-            container.scrollTop = container.scrollHeight;
-        });
     }
 
-    // ── Send message ──────────────────────────────────
-    function send(inputId) {
-        if (!FB.isOk() || !_activeModUid || !_myUid) return;
+    function open(modUid, modName) {
+        _modUid = modUid;
+        const h = document.getElementById('admin-chat-header');
+        if (h) h.innerHTML = `<div class="flex items-center gap-3"><div class="w-8 h-8 rounded-full bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center text-white font-bold text-xs">${(modName||'?')[0].toUpperCase()}</div><div><div class="font-bold text-sm">${_e(modName||modUid)}</div><div class="text-xs text-green-500">متصل</div></div></div>`;
+        const ia = document.getElementById('admin-chat-input-area');
+        if (ia) ia.classList.remove('hidden');
+        renderModList('admin-chat-list');
+        _listen(modUid, 'admin-chat-messages');
+    }
 
-        // Check mute status (moderator side)
-        if (_role === 'moderator' && _isMuted) {
-            if (typeof Toast !== 'undefined') {
-                Toast.show('⛔ تم كتم حسابك — لا يمكنك إرسال رسائل', 'error');
-            }
-            return;
-        }
+    function openOwn(myUid, containerId) { _modUid = myUid; _listen(myUid, containerId); }
 
-        const input = document.getElementById(inputId);
-        if (!input) return;
-
-        const text = (input.value || '').trim();
-        if (!text) return;
-
-        const message = {
-            text: text,
-            from: _myUid,
-            time: firebase.database.ServerValue.TIMESTAMP
+    function _listen(uid, cid) {
+        if (_unsub) { _unsub(); _unsub = null; }
+        if (!FB.isOk()) return;
+        const ref = FB.getDb().ref('shaker/chats/' + uid);
+        const handler = snap => {
+            const msgs = [];
+            if (snap.exists()) snap.forEach(c => msgs.push({ id: c.key, ...c.val() }));
+            msgs.sort((a, b) => a.time - b.time);
+            _render(msgs, cid);
         };
+        ref.on('value', handler);
+        _unsub = () => ref.off('value', handler);
+    }
 
-        // Clear input immediately (optimistic)
-        input.value = '';
-        input.focus();
-
-        // Push to Firebase
-        const ref = FB.getDb().ref('shaker/chats/' + _activeModUid);
-        ref.push(message).catch(err => {
-            console.error('Chat send error:', err);
-            if (typeof Toast !== 'undefined') {
-                Toast.show('❌ فشل إرسال الرسالة', 'error');
-            }
-            // Restore text on failure
-            input.value = text;
+    function _render(msgs, cid) {
+        const c = document.getElementById(cid);
+        if (!c) return;
+        if (!msgs.length) { c.innerHTML = '<div class="flex flex-col items-center justify-center h-full text-gray-400"><i class="fas fa-comments text-4xl mb-3 opacity-30"></i><p class="text-sm">لا توجد رسائل بعد</p></div>'; return; }
+        let lastDate = '', html = '';
+        msgs.forEach(m => {
+            const d = new Date(m.time).toLocaleDateString('ar-EG', { year:'numeric', month:'long', day:'numeric' });
+            if (d !== lastDate) { lastDate = d; html += `<div class="flex justify-center my-3"><span class="bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-xs px-3 py-1 rounded-full">${d}</span></div>`; }
+            const isAdmin = m.sender === 'admin';
+            const t = new Date(m.time).toLocaleTimeString('ar-EG', { hour:'2-digit', minute:'2-digit' });
+            const canDel = _role === 'admin';
+            html += `<div class="flex ${isAdmin ? 'justify-start' : 'justify-end'} group mb-1">
+                <div class="relative max-w-[75%] px-3.5 py-2 rounded-2xl text-sm shadow-sm ${isAdmin ? 'bg-gradient-to-br from-amber-500 to-amber-600 text-white rounded-tl-md' : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-tr-md border border-gray-100 dark:border-gray-600'}">
+                    <div class="leading-relaxed" style="word-break:break-word">${_e(m.text||'')}</div>
+                    <div class="flex items-center gap-1 mt-1 ${isAdmin?'text-amber-100':'text-gray-400'}"><span class="text-[10px]">${t}</span>${isAdmin?'<i class="fas fa-check-double text-[9px]"></i>':''}</div>
+                    ${canDel ? `<button onclick="ShakerChat.delMsg('${_modUid}','${m.id}')" class="absolute -top-2 ${isAdmin?'-right-2':'-left-2'} w-5 h-5 bg-red-500 text-white rounded-full text-[9px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center shadow"><i class="fas fa-times"></i></button>` : ''}
+                </div>
+            </div>`;
         });
+        c.innerHTML = html;
+        requestAnimationFrame(() => { c.scrollTop = c.scrollHeight; });
     }
 
-    // ── Delete conversation (admin only) ──────────────
-    function deleteConv(modUid) {
-        if (!FB.isOk() || _role !== 'admin') return;
-        if (!confirm('هل أنت متأكد من حذف هذه المحادثة؟ لا يمكن التراجع.')) return;
-
-        FB.getDb().ref('shaker/chats/' + modUid).remove()
-            .then(() => {
-                if (typeof Toast !== 'undefined') {
-                    Toast.show('✅ تم حذف المحادثة', 'success');
-                }
-                // Clear messages display
-                const messagesEl = document.getElementById('admin-chat-messages');
-                if (messagesEl) {
-                    messagesEl.innerHTML = '<div class="flex flex-col items-center justify-center h-full text-gray-400"><i class="fas fa-comments text-4xl mb-3 opacity-30"></i><p class="text-sm">تم حذف المحادثة</p></div>';
-                }
-            })
-            .catch(err => {
-                console.error('Delete chat error:', err);
-                if (typeof Toast !== 'undefined') {
-                    Toast.show('❌ فشل حذف المحادثة', 'error');
-                }
-            });
+    function send(inputId) {
+        const uid = _modUid;
+        if (!uid || !FB.isOk()) return;
+        const inp = document.getElementById(inputId || 'admin-chat-input');
+        if (!inp) return;
+        const text = (inp.value || '').trim();
+        if (!text || text.length > 2000) return;
+        inp.value = ''; inp.focus();
+        FB.getDb().ref('shaker/chats/' + uid).push({
+            sender: _role === 'admin' ? 'admin' : 'moderator', text, time: Date.now()
+        }).catch(e => { if (typeof Toast !== 'undefined') Toast.show('فشل الإرسال: ' + e.message, 'error'); });
     }
 
-    // ── HTML escape ───────────────────────────────────
-    function _escHtml(str) {
-        if (typeof Sanitize !== 'undefined' && Sanitize.html) return Sanitize.html(str);
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
+    async function delMsg(modUid, msgId) {
+        if (_role !== 'admin' || !FB.isOk()) return;
+        try { await FB.getDb().ref(`shaker/chats/${modUid}/${msgId}`).remove(); } catch (_) {}
     }
 
-    // ── Cleanup ──────────────────────────────────────
-    function destroy() {
-        _detachListener();
-        _role = null;
-        _myUid = null;
-        _activeModUid = null;
+    async function deleteConv(modUid) {
+        if (_role !== 'admin') return;
+        if (!confirm('هل تريد حذف كل رسائل هذه المحادثة؟')) return;
+        if (!FB.isOk()) return;
+        try {
+            let targetUid = modUid;
+            const mods = await Auth.getModerators();
+            const mod = mods.find(m => m.uid === modUid || m.username === modUid);
+            if (mod?.uid) targetUid = mod.uid;
+            await FB.getDb().ref('shaker/chats/' + targetUid).remove();
+            const el = document.getElementById('admin-chat-messages');
+            if (el) el.innerHTML = '<div class="text-center text-gray-400 py-8"><i class="fas fa-check-circle text-green-400 text-2xl mb-2"></i><br>تم حذف المحادثة</div>';
+            if (typeof Toast !== 'undefined') Toast.show('تم حذف المحادثة', 'success');
+        } catch (e) { if (typeof Toast !== 'undefined') Toast.show('فشل: ' + e.message, 'error'); }
     }
 
-    return {
-        init,
-        renderModList,
-        open,
-        openOwn,
-        send,
-        deleteConv,
-        destroy
-    };
+    function destroy() { if (_unsub) { _unsub(); _unsub = null; } _modUid = null; }
+    function getModUid() { return _modUid; }
+    function _e(s) { return typeof s !== 'string' ? String(s||'') : s.replace(/[<>"'&]/g, c => ({'<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','&':'&amp;'}[c])); }
+
+    return { init, renderModList, open, openOwn, send, delMsg, deleteConv, destroy, getModUid };
 })();

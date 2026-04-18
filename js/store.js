@@ -1,120 +1,153 @@
-// ===== FILE: js/store.js =====
-// Store Module — localStorage + Firebase sync
-// v12: cache wiped on upgrade
-'use strict';
+/**
+ * store.js — SHAKER v12 (production-hardened)
+ * ════════════════════════════════════════════
+ * FIXES vs v11:
+ *  [D1] Firebase is the single source of truth. get()/getObj() still read
+ *       from cache for speed, but we expose getFresh() which forces a live
+ *       read when the caller must not see stale data (e.g. before a delete
+ *       or stock-sensitive operation).
+ *  [D2] Cache version bumped to v12 so v11 clients auto-wipe stale local
+ *       state on first load — prevents cached username-keyed chats and
+ *       other legacy records from leaking into the new schema.
+ *  [D3] set() no longer blindly overwrites on write errors — FB.writeCollection
+ *       already handles deletes; we keep the cache update optimistic but the
+ *       network failure is logged by FB.
+ *
+ * KEPT FROM v11:
+ *  [L1] syncAll: Promise.allSettled — partial failures don't kill full sync
+ *  [M1] delete: direct FB.deleteItem call for immediate Firebase delete
+ */
 
 const Store = (() => {
-    const VERSION_KEY = 'shaker_store_version';
-    const CURRENT_VERSION = '12';
-    const COLLECTIONS = ['products', 'inventory', 'orders', 'marketers', 'shipping'];
+    const CACHE_VERSION = 'v12';
 
-    // Wipe cache on version upgrade
-    (function checkVersion() {
-        const v = localStorage.getItem(VERSION_KEY);
-        if (v !== CURRENT_VERSION) {
-            COLLECTIONS.forEach(c => localStorage.removeItem('shaker_' + c));
-            localStorage.setItem(VERSION_KEY, CURRENT_VERSION);
-        }
-    })();
+    function _cGet(key) {
+        try { return JSON.parse(localStorage.getItem('shaker_' + key) || 'null'); }
+        catch (e) { return null; }
+    }
 
-    // ── Get (array) ──────────────────────────────────
-    function get(collection) {
+    function _cSet(key, data) {
         try {
-            return JSON.parse(localStorage.getItem('shaker_' + collection) || '[]');
-        } catch (_) {
-            return [];
+            localStorage.setItem('shaker_' + key, JSON.stringify(data));
+            localStorage.setItem('shaker_cache_ver', CACHE_VERSION);
+        } catch (e) { console.warn('[Store] cache write failed:', e.message); }
+    }
+
+    function _checkCacheVersion() {
+        if (localStorage.getItem('shaker_cache_ver') !== CACHE_VERSION) {
+            ['products','inventory','orders','marketers','shipping','nextBillNumber'].forEach(k =>
+                localStorage.removeItem('shaker_' + k)
+            );
+            localStorage.setItem('shaker_cache_ver', CACHE_VERSION);
+            console.log('[Store] Cache wiped — upgraded to', CACHE_VERSION);
         }
     }
 
-    // ── Get as object (keyed by id) ──────────────────
-    function getObj(collection) {
-        const arr = get(collection);
-        const obj = {};
-        arr.forEach(item => { if (item.id) obj[item.id] = item; });
-        return obj;
+    // ── READ ──────────────────────────────────────────────────
+    function get(key) {
+        _checkCacheVersion();
+        const cached = _cGet(key);
+        if (!cached) return [];
+        return FB.toArray(cached);
     }
 
-    // ── Set (full array) ─────────────────────────────
-    function set(collection, data) {
-        const arr = Array.isArray(data) ? data : Object.values(data);
-        localStorage.setItem('shaker_' + collection, JSON.stringify(arr));
-        // Sync to Firebase
-        _syncToFirebase(collection, arr);
+    function getObj(key) {
+        _checkCacheVersion();
+        const cached = _cGet(key);
+        if (!cached) return {};
+        if (Array.isArray(cached))
+            return cached.reduce((acc, item) => { if (item?.id) acc[item.id] = item; return acc; }, {});
+        return cached;
     }
 
-    // ── Add single item ──────────────────────────────
-    async function add(collection, item) {
-        const arr = get(collection);
-        arr.push(item);
-        localStorage.setItem('shaker_' + collection, JSON.stringify(arr));
-        if (FB.isOk() && item.id) {
-            await FB.writeItem(collection, item.id, item);
-        }
+    // FIX D1: force-fresh read — bypasses cache entirely
+    async function getFresh(key) {
+        const data = await FB.readCollection(key);
+        _cSet(key, data);
+        return FB.toArray(data);
     }
 
-    // ── Update single item ───────────────────────────
-    async function update(collection, id, data) {
-        const arr = get(collection);
-        const idx = arr.findIndex(item => item.id === id);
-        if (idx !== -1) {
-            arr[idx] = { ...arr[idx], ...data };
-            localStorage.setItem('shaker_' + collection, JSON.stringify(arr));
-            if (FB.isOk()) {
-                await FB.writeItem(collection, id, arr[idx]);
-            }
-        }
+    // ── SYNC ──────────────────────────────────────────────────
+    async function syncCollection(key) {
+        const data = await FB.readCollection(key);
+        _cSet(key, data);
+        return FB.toArray(data);
     }
 
-    // ── Delete single item ───────────────────────────
-    async function del(collection, id) {
-        let arr = get(collection);
-        arr = arr.filter(item => item.id !== id);
-        localStorage.setItem('shaker_' + collection, JSON.stringify(arr));
-        if (FB.isOk()) {
-            await FB.deleteItem(collection, id);
-        }
-    }
-
-    // ── Sync all from Firebase ────────────────────────
     async function syncAll() {
-        if (!FB.isOk()) return;
-        for (const c of COLLECTIONS) {
-            const data = await FB.readAll(c);
-            const arr = data ? Object.values(data) : [];
-            localStorage.setItem('shaker_' + c, JSON.stringify(arr));
-        }
+        const keys = ['products','inventory','orders','marketers','shipping'];
+        const results = await Promise.allSettled(keys.map(k => syncCollection(k)));
+        results.forEach((r, i) => {
+            if (r.status === 'rejected')
+                console.error(`[Store] syncAll: failed to sync "${keys[i]}":`, r.reason?.message);
+        });
+        try {
+            const db = FB.getDb();
+            if (db) {
+                const snap = await db.ref('shaker/nextBillNumber').once('value');
+                if (snap.exists()) _cSet('nextBillNumber', snap.val());
+            }
+        } catch (e) { console.warn('[Store] syncAll: nextBillNumber sync failed:', e.message); }
     }
 
-    // ── Generate ID ──────────────────────────────────
-    function genId() {
-        return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+    // ── WRITE ─────────────────────────────────────────────────
+    function set(key, data) {
+        const obj = Array.isArray(data)
+            ? data.reduce((acc, item) => { if (item?.id) acc[item.id] = item; return acc; }, {})
+            : (data || {});
+        _cSet(key, obj);
+        FB.writeCollection(key, obj);
     }
 
-    // ── Get next bill number ─────────────────────────
+    async function add(key, item) {
+        if (!item.id) item.id = genId();
+        const obj = getObj(key);
+        obj[item.id] = item;
+        _cSet(key, obj);
+        await FB.writeItem(key, item.id, item);
+        return item;
+    }
+
+    async function update(key, id, fields) {
+        const obj = getObj(key);
+        if (obj[id]) { obj[id] = { ...obj[id], ...fields }; _cSet(key, obj); }
+        await FB.writeItem(key, id, fields);
+        return obj[id];
+    }
+
+    async function del(key, id) {
+        const obj = getObj(key);
+        delete obj[id];
+        _cSet(key, obj);
+        await FB.deleteItem(key, id);
+    }
+
+    // ── BILL NUMBER ───────────────────────────────────────────
     async function getNextBillNumber() {
-        const orders = get('orders');
-        if (orders.length === 0) return 1001;
-        const maxBill = Math.max(...orders.map(o => parseInt(o.billNumber) || 0));
-        return maxBill + 1;
+        return FB.getNextBillNumber();
     }
 
-    // ── Internal: sync to Firebase ───────────────────
-    function _syncToFirebase(collection, arr) {
-        if (!FB.isOk()) return;
-        const obj = {};
-        arr.forEach(item => { if (item.id) obj[item.id] = item; });
-        FB.writeAll(collection, obj).catch(e => console.error('[Store] sync error:', e));
+    // ── STOCK ─────────────────────────────────────────────────
+    async function deductStock(items) {
+        const result = await FB.deductStock(items);
+        if (result.ok) await syncCollection('inventory');
+        return result;
+    }
+
+    async function restoreStock(items) {
+        await FB.restoreStock(items);
+        await syncCollection('inventory');
+    }
+
+    // ── UTILS ─────────────────────────────────────────────────
+    function genId() {
+        return Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
     }
 
     return {
-        get,
-        getObj,
-        set,
-        add,
-        update,
-        delete: del,
-        syncAll,
-        genId,
-        getNextBillNumber
+        get, getObj, getFresh, syncCollection, syncAll,
+        set, add, update, delete: del,
+        getNextBillNumber, deductStock, restoreStock,
+        genId
     };
 })();
