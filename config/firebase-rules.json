@@ -2,88 +2,36 @@
   "rules": {
     "shaker": {
 
+      "users": {
+        ".read": "auth != null",
+        ".write": "auth != null && root.child('shaker/users').child(auth.uid).child('role').val() === 'admin'"
+      },
+
       "products": {
-        ".read":  "auth != null && root.child('shaker/users').child(auth.uid).child('active').val() === true && (root.child('shaker/users').child(auth.uid).child('role').val() === 'admin' || root.child('shaker/users').child(auth.uid).child('role').val() === 'moderator')",
-        ".write": "auth != null && root.child('shaker/users').child(auth.uid).child('active').val() === true && root.child('shaker/users').child(auth.uid).child('role').val() === 'admin'"
+        ".read": "auth != null",
+        ".write": "auth != null && root.child('shaker/users').child(auth.uid).child('role').val() === 'admin'"
       },
 
       "inventory": {
-        ".read":  "auth != null && root.child('shaker/users').child(auth.uid).child('active').val() === true && (root.child('shaker/users').child(auth.uid).child('role').val() === 'admin' || root.child('shaker/users').child(auth.uid).child('role').val() === 'moderator')",
-        ".write": "auth != null && root.child('shaker/users').child(auth.uid).child('active').val() === true && root.child('shaker/users').child(auth.uid).child('role').val() === 'admin'"
+        ".read": "auth != null",
+        ".write": "auth != null && root.child('shaker/users').child(auth.uid).child('role').val() === 'admin'"
       },
 
       "orders": {
-        ".read": "auth != null && root.child('shaker/users').child(auth.uid).child('active').val() === true && (root.child('shaker/users').child(auth.uid).child('role').val() === 'admin' || root.child('shaker/users').child(auth.uid).child('role').val() === 'moderator')",
-        ".write": "auth != null && root.child('shaker/users').child(auth.uid).child('active').val() === true && root.child('shaker/users').child(auth.uid).child('role').val() === 'admin'",
-        "$orderId": {
-          ".write": "auth != null && root.child('shaker/users').child(auth.uid).child('active').val() === true && (root.child('shaker/users').child(auth.uid).child('role').val() === 'admin' || (root.child('shaker/users').child(auth.uid).child('role').val() === 'moderator' && ((!data.exists() && newData.child('moderatorUid').val() === auth.uid) || (data.exists() && data.child('moderatorUid').val() === auth.uid && (!newData.exists() || newData.child('moderatorUid').val() === auth.uid)))))"
-        }
+        ".read": "auth != null",
+        ".write": "auth != null"
       },
 
       "marketers": {
-        ".read":  "auth != null && root.child('shaker/users').child(auth.uid).child('active').val() === true && (root.child('shaker/users').child(auth.uid).child('role').val() === 'admin' || root.child('shaker/users').child(auth.uid).child('role').val() === 'moderator')",
-        ".write": "auth != null && root.child('shaker/users').child(auth.uid).child('active').val() === true && root.child('shaker/users').child(auth.uid).child('role').val() === 'admin'"
-      },
-
-      "shipping": {
-        ".read":  "auth != null && root.child('shaker/users').child(auth.uid).child('active').val() === true && (root.child('shaker/users').child(auth.uid).child('role').val() === 'admin' || root.child('shaker/users').child(auth.uid).child('role').val() === 'moderator')",
-        ".write": "auth != null && root.child('shaker/users').child(auth.uid).child('active').val() === true && root.child('shaker/users').child(auth.uid).child('role').val() === 'admin'"
-      },
-
-      "nextBillNumber": {
-        ".read":  "auth != null && root.child('shaker/users').child(auth.uid).child('active').val() === true && (root.child('shaker/users').child(auth.uid).child('role').val() === 'admin' || root.child('shaker/users').child(auth.uid).child('role').val() === 'moderator')",
-        ".write": "auth != null && root.child('shaker/users').child(auth.uid).child('active').val() === true && (root.child('shaker/users').child(auth.uid).child('role').val() === 'admin' || root.child('shaker/users').child(auth.uid).child('role').val() === 'moderator')",
-        ".validate": "newData.isNumber()"
-      },
-
-      "users": {
-        ".read":  "auth != null && root.child('shaker/users').child(auth.uid).child('role').val() === 'admin' && root.child('shaker/users').child(auth.uid).child('active').val() === true",
-        "$uid": {
-          ".read":  "auth != null && (auth.uid === $uid || (root.child('shaker/users').child(auth.uid).child('role').val() === 'admin' && root.child('shaker/users').child(auth.uid).child('active').val() === true))",
-          ".write": "auth != null && root.child('shaker/users').child(auth.uid).child('role').val() === 'admin' && root.child('shaker/users').child(auth.uid).child('active').val() === true"
-        }
+        ".read": "auth != null",
+        ".write": "auth != null && root.child('shaker/users').child(auth.uid).child('role').val() === 'admin'"
       },
 
       "chats": {
-        "$modUid": {
-          ".read":  "auth != null && (auth.uid === $modUid || (root.child('shaker/users').child(auth.uid).child('role').val() === 'admin' && root.child('shaker/users').child(auth.uid).child('active').val() === true))",
-          ".write": "auth != null && root.child('shaker/users').child(auth.uid).child('active').val() === true && (root.child('shaker/users').child(auth.uid).child('role').val() === 'admin' || auth.uid === $modUid)",
-          "$msgId": {
-            ".validate": "newData.hasChildren(['sender','text','time']) && newData.child('text').isString() && newData.child('text').val().length > 0 && newData.child('text').val().length <= 2000 && newData.child('time').isNumber()"
-          }
-        }
-      },
-
-      "calls": {
-        "$uid": {
-          ".read":  "auth != null && (auth.uid === $uid || root.child('shaker/users').child(auth.uid).child('role').val() === 'admin')",
-          ".write": "auth != null && root.child('shaker/users').child(auth.uid).child('active').val() === true"
-        }
-      },
-
-      "logs": {
-        ".read":  "auth != null && root.child('shaker/users').child(auth.uid).child('role').val() === 'admin' && root.child('shaker/users').child(auth.uid).child('active').val() === true",
-        ".write": false,
-        "$id": {
-          ".write":    "auth != null && !data.exists() && newData.child('uid').val() === auth.uid",
-          ".validate": "newData.hasChildren(['uid','action','time']) && newData.child('time').isNumber()"
-        }
-      },
-
-      "settings": {
-        ".read":  "auth != null && root.child('shaker/users').child(auth.uid).child('active').val() === true",
-        ".write": "auth != null && root.child('shaker/users').child(auth.uid).child('role').val() === 'admin' && root.child('shaker/users').child(auth.uid).child('active').val() === true"
-      },
-
-      "setup_done": {
-        ".read":  true,
-        ".write": "auth != null && !data.exists()"
+        ".read": "auth != null",
+        ".write": "auth != null"
       }
-    },
 
-    "shaker_backups": {
-      ".read":  "auth != null && root.child('shaker/users').child(auth.uid).child('role').val() === 'admin' && root.child('shaker/users').child(auth.uid).child('active').val() === true",
-      ".write": "auth != null && root.child('shaker/users').child(auth.uid).child('role').val() === 'admin' && root.child('shaker/users').child(auth.uid).child('active').val() === true"
     }
   }
 }

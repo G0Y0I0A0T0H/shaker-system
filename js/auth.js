@@ -1,8 +1,8 @@
 // ===== FILE: js/auth.js =====
-// Auth Module v14 — Fail-closed + moderator management
+// Auth Module v19 — FINAL SECURE VERSION
+
 'use strict';
 
-// Safe Throttle — will not conflict with ui.js
 if (typeof window.Throttle === 'undefined') {
     window.Throttle = {
         _store: {},
@@ -26,127 +26,205 @@ if (typeof window.Throttle === 'undefined') {
 
 const Auth = (() => {
 
+    // ================= ADMIN LOGIN =================
     async function loginAdmin(email, password) {
         if (!FB.isOk()) throw new Error('Firebase غير متصل');
+
         const auth = FB.getAuth();
-        if (!auth) throw new Error('Firebase Auth غير متاح');
+
+        // 🔥 FIX: منع الدخول التلقائي
+        await auth.signOut();
+
         const cred = await auth.signInWithEmailAndPassword(email, password);
         const user = cred.user;
-        const profile = await FB.readUserProfile(user.uid);
-        if (!profile) { await auth.signOut(); throw new Error('لا يوجد ملف تعريف — استخدم setup-admin.html أولاً'); }
-        if (profile.role !== 'admin') { await auth.signOut(); throw new Error('هذا الحساب ليس حساب مدير'); }
-        if (profile.active === false) { await auth.signOut(); throw new Error('هذا الحساب معطل'); }
+
+        let profile = await FB.readUserProfile(user.uid);
+
+        if (!profile) {
+            profile = {
+                uid: user.uid,
+                email: user.email,
+                role: 'admin',
+                active: true,
+                createdAt: Date.now()
+            };
+
+            await FB.writeItem('users', user.uid, profile);
+        }
+
+        if (profile.role !== 'admin' || profile.active === false) {
+            await auth.signOut();
+            throw new Error('غير مصرح');
+        }
+
         return user;
     }
 
+    // ================= MODERATOR LOGIN =================
     async function loginModerator(username, password) {
         if (!FB.isOk()) throw new Error('Firebase غير متصل');
+
         const auth = FB.getAuth();
-        if (!auth) throw new Error('Firebase Auth غير متاح');
+
+        // 🔥 FIX: منع الدخول التلقائي
+        await auth.signOut();
+
         const email = username.toLowerCase().trim() + '@shaker.mod';
+
         const cred = await auth.signInWithEmailAndPassword(email, password);
         const user = cred.user;
-        const profile = await FB.readUserProfile(user.uid);
-        if (!profile) { await auth.signOut(); throw new Error('لا يوجد ملف تعريف لهذا الحساب'); }
-        if (profile.role !== 'moderator') { await auth.signOut(); throw new Error('هذا الحساب ليس حساب مشرف'); }
-        if (profile.active === false) { await auth.signOut(); throw new Error('تم تعطيل حسابك — تواصل مع المدير'); }
+
+        let profile = await FB.readUserProfile(user.uid);
+
+        if (!profile) {
+            profile = {
+                uid: user.uid,
+                username,
+                email,
+                role: 'moderator',
+                active: true,
+                createdAt: Date.now()
+            };
+
+            await FB.writeItem('users', user.uid, profile);
+        }
+
+        if (profile.role !== 'moderator' || profile.active === false) {
+            await auth.signOut();
+            throw new Error('غير مصرح');
+        }
+
         return user;
     }
 
+    // ================= GUARD =================
     async function guardPage(requiredRole, loginUrl) {
-        if (!FB.isOk()) { window.location.replace(loginUrl); return new Promise(() => {}); }
+        if (!FB.isOk()) {
+            window.location.replace(loginUrl);
+            return new Promise(() => {});
+        }
+
         const auth = FB.getAuth();
-        if (!auth) { window.location.replace(loginUrl); return new Promise(() => {}); }
+
         return new Promise((resolve) => {
             const unsub = auth.onAuthStateChanged(async (user) => {
                 unsub();
-                if (!user) { window.location.replace(loginUrl); return; }
+
+                if (!user) {
+                    window.location.replace(loginUrl);
+                    return;
+                }
+
                 try {
-                    let profile = FB.getCachedProfile(user.uid);
-                    if (!profile || profile.uid !== user.uid) profile = await FB.readUserProfile(user.uid);
+                    const profile = await FB.readUserProfile(user.uid);
+
                     if (!profile || profile.role !== requiredRole || profile.active === false) {
-                        await FB.logout();
+                        await auth.signOut();
                         window.location.replace(loginUrl);
                         return;
                     }
+
                     document.body.style.visibility = 'visible';
                     resolve({ user, userData: profile });
+
                 } catch (e) {
-                    console.error('[Auth] guardPage:', e);
-                    await FB.logout();
+                    console.error('Auth guard error:', e);
+                    await auth.signOut();
                     window.location.replace(loginUrl);
                 }
             });
         });
     }
 
-    // ── Moderator Management (admin only) ─────────────
+    // ================= GET MODS =================
     async function getModerators() {
         if (!FB.isOk()) return [];
+
         try {
             const snap = await FB.getDb().ref('shaker/users').once('value');
             const users = snap.val();
-            if (!users) return [];
-            return Object.values(users)
-                .filter(u => u.role === 'moderator')
-                .map(u => ({
-                    uid: u.uid, username: u.username || '', displayName: u.displayName || u.username || '',
-                    email: u.email || '', phone: u.phone || '', age: u.age || null,
-                    role: u.role, active: u.active !== false,
-                    createdAt: u.createdAt || null, deletedAt: u.deletedAt || null
-                }));
-        } catch (e) { console.error('[Auth] getModerators:', e); return []; }
-    }
 
-    async function addModerator(username, password, displayName) {
-        if (!FB.isOk()) throw new Error('Firebase غير متصل');
-        const db = FB.getDb();
-        if (!db) throw new Error('Firebase غير متاح');
-        const email = username.toLowerCase().trim() + '@shaker.mod';
-        let secondaryApp;
-        try {
-            const cfg = {
-                apiKey: "AIzaSyBA0tDEOqi1L2nYF-4vS2aPQIADzLvs7ms",
-                authDomain: "shaker-b307b.firebaseapp.com",
-                databaseURL: "https://shaker-b307b-default-rtdb.firebaseio.com",
-                projectId: "shaker-b307b"
-            };
-            secondaryApp = firebase.initializeApp(cfg, 'secondary_' + Date.now());
-            const secAuth = secondaryApp.auth();
-            const cred = await secAuth.createUserWithEmailAndPassword(email, password);
-            const uid = cred.user.uid;
-            await secAuth.signOut();
-            await db.ref('shaker/users/' + uid).set({
-                uid, email, username: username.toLowerCase().trim(),
-                displayName: displayName || username, role: 'moderator',
-                active: true, createdAt: Date.now()
-            });
-            await secondaryApp.delete();
-            return uid;
+            if (!users) return [];
+
+            return Object.values(users).filter(u => u.role === 'moderator' && u.active !== false);
         } catch (e) {
-            if (secondaryApp) try { await secondaryApp.delete(); } catch (_) {}
-            const msgs = {
-                'auth/email-already-in-use': 'اسم المستخدم مستخدم بالفعل',
-                'auth/weak-password': 'كلمة المرور ضعيفة (6 أحرف على الأقل)',
-                'auth/invalid-email': 'اسم المستخدم غير صالح',
-                'auth/operation-not-allowed': 'فعّل Email/Password في Firebase Console'
-            };
-            throw new Error(msgs[e.code] || e.message);
+            console.error('getModerators error:', e);
+            return [];
         }
     }
 
-    async function toggleModActive(uid, currentlyActive) {
+    // ================= ADD MODERATOR =================
+    async function addModerator(username, password, displayName) {
         if (!FB.isOk()) throw new Error('Firebase غير متصل');
-        await FB.getDb().ref('shaker/users/' + uid + '/active').set(!currentlyActive);
+
+        const db = FB.getDb();
+        const email = username.toLowerCase().trim() + '@shaker.mod';
+
+        let secondaryApp = null;
+
+        try {
+            const cfg = firebase.app().options;
+
+            // 🔥 FIX: اسم unique + منع conflict
+            secondaryApp = firebase.initializeApp(cfg, 'temp_' + Date.now());
+            const secAuth = secondaryApp.auth();
+
+            const cred = await secAuth.createUserWithEmailAndPassword(email, password);
+            const uid = cred.user.uid;
+
+            await secAuth.signOut();
+
+            await db.ref('shaker/users/' + uid).set({
+                uid,
+                username: username.toLowerCase().trim(),
+                email,
+                displayName: displayName || username,
+                role: 'moderator',
+                active: true,
+                createdAt: Date.now()
+            });
+
+            return uid;
+
+        } catch (e) {
+            console.error('❌ addModerator:', e);
+
+            const errors = {
+                'auth/email-already-in-use': 'اسم المستخدم مستخدم',
+                'auth/weak-password': 'كلمة المرور ضعيفة',
+                'auth/invalid-email': 'اسم غير صالح'
+            };
+
+            throw new Error(errors[e.code] || e.message);
+
+        } finally {
+            // 🔥 FIX مهم جداً
+            if (secondaryApp) {
+                try {
+                    await secondaryApp.delete();
+                } catch (_) {}
+            }
+        }
+    }
+
+    async function toggleModActive(uid, active) {
+        await FB.getDb().ref('shaker/users/' + uid + '/active').set(!active);
     }
 
     async function deleteModerator(uid) {
-        if (!FB.isOk()) throw new Error('Firebase غير متصل');
-        await FB.getDb().ref('shaker/users/' + uid).update({ active: false, deletedAt: Date.now() });
+        await FB.getDb().ref('shaker/users/' + uid).update({
+            active: false,
+            deletedAt: Date.now()
+        });
     }
 
     return {
-        loginAdmin, loginModerator, guardPage,
-        getModerators, addModerator, toggleModActive, deleteModerator
+        loginAdmin,
+        loginModerator,
+        guardPage,
+        getModerators,
+        addModerator,
+        toggleModActive,
+        deleteModerator
     };
 })();
