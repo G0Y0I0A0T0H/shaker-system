@@ -108,6 +108,21 @@ requestAnimationFrame(() => {
 <script src="js/firebase.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/store.js"></script>
+<script>
+// v14: Patch Store.get to always return arrays (Firebase returns objects for numeric-keyed data)
+(function() {
+    if (typeof Store !== 'undefined' && Store.get) {
+        const _origGet = Store.get.bind(Store);
+        Store.get = function(key) {
+            const data = _origGet(key);
+            if (!data) return [];
+            if (Array.isArray(data)) return data;
+            if (typeof data === 'object') return Object.values(data);
+            return data;
+        };
+    }
+})();
+</script>
 <script src="js/ui.js"></script>
 <script src="js/chat.js"></script>
 <script src="js/moderators.js"></script>
@@ -923,6 +938,59 @@ class="bg-green-600 text-white px-6 py-3 rounded-xl hover:bg-green-700 transitio
 // 👑 MODERATOR MANAGEMENT — loaded from js/moderators.js
 // ModMgr.render(), ModMgr.openAdd(), etc. are defined externally
 // ═══════════════════════════════════════════════════
+// v14: Moderator details popup (callable from ModMgr table rows)
+async function showModDetails(uid) {
+    try {
+        const profile = await FB.readUserProfile(uid);
+        if (!profile) { Toast.show('لم يتم العثور على بيانات المشرف', 'error'); return; }
+        const orders = Store.get('orders').filter(o => o.moderatorUid === uid);
+        const totalSales = orders.reduce((sum, o) => sum + (parseFloat(o.total) || 0), 0);
+        // Find top product
+        const productCount = {};
+        orders.forEach(o => {
+            (Array.isArray(o.items) ? o.items : []).forEach(i => {
+                const name = i.model || i.name || 'غير معروف';
+                productCount[name] = (productCount[name] || 0) + 1;
+            });
+        });
+        const sorted = Object.entries(productCount).sort((a, b) => b[1] - a[1]);
+        const best = sorted.length > 0 ? sorted[0][0] : '-';
+        // Build a styled modal instead of alert()
+        const esc = (s) => typeof Sanitize !== 'undefined' ? Sanitize.html(String(s || '-')) : String(s || '-').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+        const html = `
+            <div style="font-family:Tajawal,sans-serif;direction:rtl;text-align:right;line-height:2">
+            <div style="font-size:1.3rem;font-weight:700;margin-bottom:.5rem;color:#bd9657">${esc(profile.displayName || profile.username)}</div>
+            <div><b>اسم المستخدم:</b> @${esc(profile.username)}</div>
+            <div><b>البريد:</b> ${esc(profile.email)}</div>
+            <div><b>الهاتف:</b> ${esc(profile.phone)}</div>
+            <div><b>العمر:</b> ${esc(profile.age)}</div>
+            <div><b>المكان:</b> ${esc(profile.location)}</div>
+            <hr style="border-color:#333;margin:.5rem 0">
+            <div><b>عدد الطلبات:</b> ${orders.length}</div>
+            <div><b>إجمالي المبيعات:</b> ${totalSales.toLocaleString('ar-EG')} ج.م</div>
+            <div><b>أفضل موديل:</b> ${esc(best)}</div>
+            <div><b>الحالة:</b> <span style="color:${profile.active !== false ? '#4ade80' : '#f87171'}">${profile.active !== false ? 'نشط ✅' : 'معطل ❌'}</span></div>
+            </div>`;
+        // Use existing modal system if available, otherwise create a temp one
+        let overlay = document.getElementById('modDetailsOverlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'modDetailsOverlay';
+            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50000;display:flex;align-items:center;justify-content:center;';
+            overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+            document.body.appendChild(overlay);
+        }
+        overlay.innerHTML = `<div style="background:#1a1a2e;border:1px solid rgba(189,150,87,.3);border-radius:16px;padding:2rem;max-width:420px;width:90%;color:#e2e8f0;position:relative">
+            <button onclick="document.getElementById('modDetailsOverlay').remove()" style="position:absolute;top:.8rem;left:.8rem;background:none;border:none;color:#888;font-size:1.2rem;cursor:pointer">&times;</button>
+            ${html}
+        </div>`;
+        overlay.style.display = 'flex';
+    } catch(e) {
+        console.error('[showModDetails]', e);
+        if (typeof Toast !== 'undefined') Toast.show('خطأ في تحميل البيانات', 'error');
+    }
+}
+window.showModDetails = showModDetails;
 // 💬 ADMIN CHAT — delegates to ShakerChat (js/chat.js)
 // ═══════════════════════════════════════════════════
 const AdminChat = {
@@ -930,6 +998,14 @@ init: () => {
 if (!FB.isOk()) return;
 ShakerChat.init('admin', FB.getAuth()?.currentUser?.uid);
 ShakerChat.renderModList('admin-chat-list');
+// v14: auto-scroll chat messages when new messages arrive
+const chatBox = document.getElementById('admin-chat-messages');
+if (chatBox && !chatBox._autoScrollObserver) {
+    chatBox._autoScrollObserver = new MutationObserver(() => {
+        chatBox.scrollTop = chatBox.scrollHeight;
+    });
+    chatBox._autoScrollObserver.observe(chatBox, { childList: true, subtree: true });
+}
 },
 renderList: () => ShakerChat.renderModList('admin-chat-list'),
 openWith: (uid) => ShakerChat.open(uid, uid),
@@ -2683,25 +2759,53 @@ window.addEventListener('DOMContentLoaded', async () => {
 const splashScreen = document.getElementById('splashScreen');
 if (splashScreen) { splashScreen.style.visibility='visible'; splashScreen.style.position='fixed'; splashScreen.style.inset='0'; splashScreen.style.zIndex='99999'; }
 document.body.style.visibility='visible';
+
+// v14: safety — dismiss splash after 8s max regardless of init outcome
+const _splashTimeout = setTimeout(() => {
+    if (splashScreen && splashScreen.style.opacity !== '0') {
+        console.warn('[splash] force-dismiss after timeout');
+        splashScreen.style.transition = 'opacity 0.35s ease';
+        splashScreen.style.opacity = '0';
+        setTimeout(() => { splashScreen.style.display = 'none'; }, 400);
+    }
+}, 8000);
+
+function dismissSplash() {
+    clearTimeout(_splashTimeout);
+    if (splashScreen) {
+        splashScreen.style.transition = 'opacity 0.35s ease';
+        splashScreen.style.opacity = '0';
+        setTimeout(() => { splashScreen.style.display = 'none'; }, 400);
+    }
+}
+
 // ── Auth Guard (v13: cache-first → instant show, then background verify) ──
 if (typeof FB !== "undefined" && FB.init) { try { FB.init(); } catch(e){ console.error("FB.init failed:",e);} }
-const { userData: _admin } = await Auth.guardPage('admin', 'login.html');
+let _admin;
+try {
+    const result = await Auth.guardPage('admin', 'login.html');
+    _admin = result.userData;
+} catch(e) {
+    console.error('[init] auth guard failed:', e);
+    dismissSplash();
+    return; // guardPage redirects on failure, but just in case
+}
 window._adminData = _admin;
 {
     const el = document.getElementById('admin-user-info');
     if (el) el.textContent = '👤 ' + (_admin.displayName || 'Admin');
 }
 // 🔥 Sync + app init run concurrently, splash dismissed when BOTH complete
-const syncPromise = FB.isOk()
-    ? Store.syncAll().then(() => FB.migrateIfEmpty()).catch(e => console.error('[init] sync:', e.message))
-    : Promise.resolve();
-const [/*sync*/] = await Promise.all([syncPromise, app.init()]);
-// v13: dismiss splash immediately when data is ready (was hardcoded 2000ms)
-if (splashScreen) {
-    splashScreen.style.transition = 'opacity 0.35s ease';
-    splashScreen.style.opacity = '0';
-    setTimeout(() => { splashScreen.style.display = 'none'; }, 400);
+try {
+    const syncPromise = FB.isOk()
+        ? Store.syncAll().then(() => FB.migrateIfEmpty()).catch(e => console.error('[init] sync:', e.message))
+        : Promise.resolve();
+    const [/*sync*/] = await Promise.all([syncPromise, app.init()]);
+} catch(e) {
+    console.error('[init] sync/app.init failed:', e);
 }
+// v13: dismiss splash immediately when data is ready
+dismissSplash();
 app.initStockTable();
 const _origNav = app.nav.bind(app);
 app.nav = function(section) {

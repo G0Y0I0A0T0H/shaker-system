@@ -23,6 +23,21 @@
 <script src="js/firebase.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/store.js"></script>
+<script>
+// v14: Patch Store.get to always return arrays
+(function() {
+    if (typeof Store !== 'undefined' && Store.get) {
+        const _origGet = Store.get.bind(Store);
+        Store.get = function(key) {
+            const data = _origGet(key);
+            if (!data) return [];
+            if (Array.isArray(data)) return data;
+            if (typeof data === 'object') return Object.values(data);
+            return data;
+        };
+    }
+})();
+</script>
 <script src="js/ui.js"></script>
 <script src="js/chat.js"></script>
 <script>
@@ -256,6 +271,14 @@ function renderSettings() {
 window.addEventListener('DOMContentLoaded', async () => {
     if (typeof FB !== 'undefined' && FB.init) { try { FB.init(); } catch(_) {} }
 
+    // v14: safety — show body after 8s max even if auth hangs
+    const _visTimeout = setTimeout(() => {
+        if (document.body.style.visibility !== 'visible') {
+            console.warn('[mod-init] force-show body after timeout');
+            document.body.style.visibility = 'visible';
+        }
+    }, 8000);
+
     // Check for impersonation mode
     const impersonateData = sessionStorage.getItem('shaker_impersonate');
     const urlParams = new URLSearchParams(window.location.search);
@@ -290,6 +313,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     const { user, userData } = await Auth.guardPage('moderator', 'Moderator_login.html');
     MOD_DATA = userData;
     MOD_UID = user.uid;
+    document.body.style.visibility = 'visible';
 
     const infoEl = document.getElementById('mod-user-info');
     if (infoEl) infoEl.textContent = '👤 ' + (userData.displayName || userData.username || 'مشرف');
@@ -300,6 +324,14 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Init chat
     ShakerChat.init('moderator', user.uid);
     ShakerChat.openOwn(user.uid, 'mod-chat-messages');
+    // v14: auto-scroll chat messages
+    const modChatBox = document.getElementById('mod-chat-messages');
+    if (modChatBox && !modChatBox._autoScrollObserver) {
+        modChatBox._autoScrollObserver = new MutationObserver(() => {
+            modChatBox.scrollTop = modChatBox.scrollHeight;
+        });
+        modChatBox._autoScrollObserver.observe(modChatBox, { childList: true, subtree: true });
+    }
 
     // Sync data
     if (FB.isOk()) {
