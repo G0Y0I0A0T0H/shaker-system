@@ -40,16 +40,10 @@ const Auth = (() => {
 
         let profile = await FB.readUserProfile(user.uid);
 
+        // v19 SECURITY: FAIL CLOSED — no profile = no access
         if (!profile) {
-            profile = {
-                uid: user.uid,
-                email: user.email,
-                role: 'admin',
-                active: true,
-                createdAt: Date.now()
-            };
-
-            await FB.writeItem('users', user.uid, profile);
+            await auth.signOut();
+            throw new Error('لا يوجد ملف تعريف لهذا الحساب — تواصل مع مسؤول النظام');
         }
 
         if (profile.role !== 'admin' || profile.active === false) {
@@ -76,17 +70,10 @@ const Auth = (() => {
 
         let profile = await FB.readUserProfile(user.uid);
 
+        // v19 SECURITY: FAIL CLOSED — no profile = no access
         if (!profile) {
-            profile = {
-                uid: user.uid,
-                username,
-                email,
-                role: 'moderator',
-                active: true,
-                createdAt: Date.now()
-            };
-
-            await FB.writeItem('users', user.uid, profile);
+            await auth.signOut();
+            throw new Error('لا يوجد ملف تعريف لهذا الحساب');
         }
 
         if (profile.role !== 'moderator' || profile.active === false) {

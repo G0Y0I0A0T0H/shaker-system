@@ -76,6 +76,12 @@ const ShakerChat = (() => {
 
         _modUid = modUid;
 
+        // Show chat header and input area
+        const header = document.getElementById('admin-chat-header');
+        if (header) header.textContent = modName || modUid;
+        const inputArea = document.getElementById('admin-chat-input-area');
+        if (inputArea) inputArea.classList.remove('hidden');
+
         renderModList('admin-chat-list');
         _listen(modUid, 'admin-chat-messages');
     }
@@ -199,10 +205,17 @@ const ShakerChat = (() => {
             }[c]));
     }
 
+    // Moderator opens their own chat channel
+    function openOwn(uid, containerId) {
+        _modUid = uid;
+        _listen(uid, containerId || 'mod-chat-messages');
+    }
+
     return {
         init,
         renderModList,
         open,
+        openOwn,
         send,
         deleteConv
     };

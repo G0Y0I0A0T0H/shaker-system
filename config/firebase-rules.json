@@ -27,9 +27,22 @@
         ".write": "auth != null && root.child('shaker/users').child(auth.uid).child('role').val() === 'admin'"
       },
 
-      "chats": {
+      "shipping": {
         ".read": "auth != null",
-        ".write": "auth != null"
+        ".write": "auth != null && root.child('shaker/users').child(auth.uid).child('role').val() === 'admin'"
+      },
+
+      "chats": {
+        "$modUid": {
+          ".read": "auth != null && (auth.uid === $modUid || root.child('shaker/users').child(auth.uid).child('role').val() === 'admin')",
+          ".write": "auth != null && (auth.uid === $modUid || root.child('shaker/users').child(auth.uid).child('role').val() === 'admin')"
+        }
+      },
+
+      
+      "nextBillNumber": {
+        ".read": "auth != null",
+        ".write": "auth != null && root.child('shaker/users').child(auth.uid).child('role').val() === 'admin'"
       }
 
     }

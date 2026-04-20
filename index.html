@@ -108,21 +108,6 @@ requestAnimationFrame(() => {
 <script src="js/firebase.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/store.js"></script>
-<script>
-// v14: Patch Store.get to always return arrays (Firebase returns objects for numeric-keyed data)
-(function() {
-    if (typeof Store !== 'undefined' && Store.get) {
-        const _origGet = Store.get.bind(Store);
-        Store.get = function(key) {
-            const data = _origGet(key);
-            if (!data) return [];
-            if (Array.isArray(data)) return data;
-            if (typeof data === 'object') return Object.values(data);
-            return data;
-        };
-    }
-})();
-</script>
 <script src="js/ui.js"></script>
 <script src="js/chat.js"></script>
 <script src="js/moderators.js"></script>
@@ -1597,14 +1582,18 @@ analytics: Analytics,
 backup: Backup,
 // FIX: added async to init
 init: async () => {
-if (!Store.get('shipping').find(s => s.name === "ناسا")) {
-await Store.add('shipping', {
-id: "nasa_fixed",
-name: "ناسا",
-api: "",
-isFixed: true
-});
-}
+// v14: ensure shipping always has ناسا
+try {
+    const shipping = Store.get('shipping');
+    if (!shipping || shipping.length === 0 || !shipping.find(s => s.name === "ناسا")) {
+        await Store.add('shipping', {
+            id: "nasa_fixed",
+            name: "ناسا",
+            api: "",
+            isFixed: true
+        });
+    }
+} catch(e) { console.warn('[init] ensureShipping failed:', e); }
 app.nav('dashboard');
 app.renderDashboard();
 app.renderProducts();
@@ -1804,6 +1793,7 @@ sizes: selectedSizes,
 description: document.getElementById('prod-desc').value,
 imageUrl: imageUrl   // ☁️ Cloudinary URL (works on all devices)
 };
+try {
 if(id) await Store.update('products', id, product);
 else await Store.add('products', product);
 let inventory = Store.get('inventory');
@@ -1821,8 +1811,13 @@ _pendingImageBase64 = null;
 _pendingImageFile = null;
 app.modals.close('productModal');
 app.renderProducts();
+app.renderAllInventory();
 StockAlerts.render();
 Toast.show('✅ تم حفظ الموديل والمخزون بنجاح', 'success');
+} catch(e) {
+console.error('[saveProduct] failed:', e);
+Toast.show('❌ فشل حفظ الموديل — ' + e.message, 'error');
+}
 },
 editProduct: (id) => {
 const p = Store.get('products').find(x => x.id === id);
@@ -1866,12 +1861,19 @@ app.modals.open('productModal');
 // FIX: added async
 deleteProduct: async (id) => {
 if(confirm('هل أنت متأكد؟ سيتم حذف المخزون المرتبط.')) {
+try {
 const p = Store.get('products').find(x => x.id === id);
 if (p && p.imageId) { ImageDB.deleteImage(p.imageId).catch(() => {}); }
 await Store.delete('products', id);
 await Store.set('inventory', Store.get('inventory').filter(i => i.productId !== id));
 app.renderProducts();
+app.renderAllInventory();
 StockAlerts.render();
+Toast.show('✅ تم حذف الموديل', 'success');
+} catch(e) {
+console.error('[deleteProduct] failed:', e);
+Toast.show('❌ فشل حذف الموديل', 'error');
+}
 }
 },
 initInventoryFilters: () => { app.renderAllInventory(); },
@@ -2134,6 +2136,7 @@ if (app.state.currentOrderItems.length === 0) {
 Toast.show('السلة فارغة، يرجى إضافة منتج أولاً', 'error');
 return;
 }
+try {
 const { subtotal, discount, total } = app.calcOrderTotal();
 const totalCost = app.state.currentOrderItems.reduce((sum, item) => sum + (item.cost * item.qty), 0);
 const profit = total - totalCost;
@@ -2182,6 +2185,10 @@ document.getElementById('ord-shipping-payer').value = 'customer';
 app.modals.close('orderModal');
 app.renderOrders();
 Backup.save(true);
+} catch(e) {
+console.error('[saveOrder] failed:', e);
+Toast.show('❌ فشل حفظ الطلب — ' + e.message, 'error');
+}
 },
 changeOrderStatus: async (orderId, newStatus) => {
 const orders = Store.get('orders');

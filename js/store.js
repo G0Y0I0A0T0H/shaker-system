@@ -1,14 +1,22 @@
 /**
- * store.js — SHAKER FIXED v18
- * ✔️ Real-time sync with Firebase
- * ✔️ Auto refresh after updates
- * ✔️ Smart cache handling
+ * store.js — SHAKER v19 (FIXED)
+ *
+ * ARCHITECTURE:
+ *   get()      → SYNCHRONOUS — reads from localStorage cache, returns array
+ *   set/add/update/delete → ASYNC — writes to cache AND Firebase
+ *   syncAll()  → ASYNC — pulls all data from Firebase into cache (called on startup)
+ *
+ * Cache is kept in sync by:
+ *   1. syncAll() on page load
+ *   2. Every write updates cache immediately, then writes to Firebase
+ *   3. FB.startRealtime() updates localStorage on remote changes
  */
 'use strict';
 
 const Store = (() => {
-    const CACHE_VERSION = 'v18';
+    const CACHE_VERSION = 'v19';
 
+    // ── Cache helpers ────────────────────────────────
     function _cGet(key) {
         try {
             return JSON.parse(localStorage.getItem('shaker_' + key) || 'null');
@@ -28,186 +36,151 @@ const Store = (() => {
 
     function _checkCacheVersion() {
         if (localStorage.getItem('shaker_cache_ver') !== CACHE_VERSION) {
-            console.warn('⚠️ cache version changed → clearing');
-
-            ['products','inventory','orders','marketers','shipping','nextBillNumber']
+            console.warn('[Store] cache version changed → clearing');
+            ['products','inventory','orders','marketers','nextBillNumber']
                 .forEach(k => localStorage.removeItem('shaker_' + k));
-
             localStorage.setItem('shaker_cache_ver', CACHE_VERSION);
         }
     }
 
-    // ================= GET (FIXED) =================
-    async function get(key) {
-        _checkCacheVersion();
-
-        try {
-            const data = await FB.readCollection(key);
-
-            if (data) {
-                _cSet(key, data);
-                return FB.toArray(data);
-            }
-
-            return [];
-        } catch (e) {
-            console.error('❌ get error:', key, e);
-
-            const cached = _cGet(key);
-            if (cached) return FB.toArray(cached);
-
-            return [];
-        }
+    function _toArray(data) {
+        if (!data) return [];
+        if (Array.isArray(data)) return data;
+        if (typeof data === 'object') return Object.values(data);
+        return [];
     }
 
-    // ================= GET OBJECT =================
+    // ═══════════════════════════════════════════════
+    // GET — SYNCHRONOUS — reads from localStorage cache
+    // ═══════════════════════════════════════════════
+    function get(key) {
+        _checkCacheVersion();
+        var cached = _cGet(key);
+        return _toArray(cached);
+    }
+
+    // ═══════════════════════════════════════════════
+    // GET OBJECT — SYNCHRONOUS — returns {id: item} map
+    // ═══════════════════════════════════════════════
     function getObj(key) {
         _checkCacheVersion();
-
-        const cached = _cGet(key);
+        var cached = _cGet(key);
         if (!cached) return {};
-
         if (Array.isArray(cached)) {
-            return cached.reduce((acc, item) => {
+            return cached.reduce(function(acc, item) {
                 if (item && item.id) acc[item.id] = item;
                 return acc;
             }, {});
         }
-
-        return cached;
+        return typeof cached === 'object' ? cached : {};
     }
 
-    // ================= GET FRESH =================
+    // ═══════════════════════════════════════════════
+    // GET FRESH — ASYNC — reads from Firebase
+    // ═══════════════════════════════════════════════
     async function getFresh(key) {
         try {
-            const data = await FB.readCollection(key);
+            var data = await FB.readCollection(key);
             _cSet(key, data);
-            return FB.toArray(data);
+            return _toArray(data);
         } catch (e) {
             console.error('[Store] getFresh:', key, e);
-            return [];
+            return get(key);
         }
     }
 
-    // ================= SYNC COLLECTION =================
+    // ═══════════════════════════════════════════════
+    // SYNC COLLECTION — ASYNC — pulls one collection
+    // ═══════════════════════════════════════════════
     async function syncCollection(key) {
         try {
-            const data = await FB.readCollection(key);
+            var data = await FB.readCollection(key);
             _cSet(key, data);
-            console.log('✅ synced:', key);
-            return FB.toArray(data);
+            return _toArray(data);
         } catch (e) {
-            console.error('❌ sync failed:', key, e);
-            return [];
+            console.error('[Store] sync failed:', key, e);
+            return get(key);
         }
     }
 
-    // ================= SYNC ALL (FIXED) =================
+    // ═══════════════════════════════════════════════
+    // SYNC ALL — ASYNC — pulls ALL collections (startup)
+    // ═══════════════════════════════════════════════
     async function syncAll() {
-        const keys = ['products','inventory','orders','marketers','shipping'];
-
-        for (const key of keys) {
+        var keys = ['products','inventory','orders','marketers','shipping'];
+        for (var i = 0; i < keys.length; i++) {
             try {
-                const data = await FB.readCollection(key);
-                _cSet(key, data);
-                console.log('✅ synced:', key);
+                var data = await FB.readCollection(keys[i]);
+                _cSet(keys[i], data);
             } catch (e) {
-                console.error('❌ syncAll error:', key, e);
+                console.error('[Store] syncAll error:', keys[i], e);
             }
         }
-
-        // sync bill number
         try {
-            const db = FB.getDb();
+            var db = FB.getDb();
             if (db) {
-                const snap = await db.ref('shaker/nextBillNumber').once('value');
+                var snap = await db.ref('shaker/nextBillNumber').once('value');
                 if (snap.exists()) _cSet('nextBillNumber', snap.val());
             }
         } catch (e) {
-            console.warn('⚠️ bill number sync failed:', e.message);
+            console.warn('[Store] bill number sync failed:', e.message);
         }
     }
 
-    // ================= SET =================
+    // ═══════════════════════════════════════════════
+    // SET — ASYNC — replaces entire collection
+    // ═══════════════════════════════════════════════
     async function set(key, data) {
-        const obj = Array.isArray(data)
-            ? data.reduce((acc, item) => {
+        var obj = Array.isArray(data)
+            ? data.reduce(function(acc, item) {
                 if (item && item.id) acc[item.id] = item;
                 return acc;
             }, {})
             : (data || {});
-
         _cSet(key, obj);
-
-        try {
-            await FB.writeCollection(key, obj);
-            await syncAll(); // 🔥 FIX
-        } catch (e) {
-            console.error('❌ set error:', e);
-        }
+        await FB.writeCollection(key, obj);
     }
 
-    // ================= ADD =================
+    // ═══════════════════════════════════════════════
+    // ADD — ASYNC — adds single item
+    // ═══════════════════════════════════════════════
     async function add(key, item) {
         if (!item.id) item.id = genId();
-
-        const obj = getObj(key);
+        var obj = getObj(key);
         obj[item.id] = item;
-
         _cSet(key, obj);
-
-        try {
-            await FB.writeItem(key, item.id, item);
-            await syncAll(); // 🔥 FIX
-        } catch (e) {
-            console.error('❌ add error:', e);
-        }
-
+        await FB.writeItem(key, item.id, item);
         return item;
     }
 
-    // ================= UPDATE =================
+    // ═══════════════════════════════════════════════
+    // UPDATE — ASYNC — updates single item by id
+    // ═══════════════════════════════════════════════
     async function update(key, id, fields) {
-        const obj = getObj(key);
-
-        if (obj[id]) {
-            obj[id] = { ...obj[id], ...fields };
-            _cSet(key, obj);
-        }
-
-        try {
-            await FB.writeItem(key, id, obj[id] || fields);
-            await syncAll(); // 🔥 FIX
-        } catch (e) {
-            console.error('❌ update error:', e);
-        }
-
-        return obj[id];
+        var obj = getObj(key);
+        var merged = obj[id] ? Object.assign({}, obj[id], fields) : Object.assign({ id: id }, fields);
+        obj[id] = merged;
+        _cSet(key, obj);
+        await FB.writeItem(key, id, merged);
+        return merged;
     }
 
-    // ================= DELETE =================
+    // ═══════════════════════════════════════════════
+    // DELETE — ASYNC — removes single item by id
+    // ═══════════════════════════════════════════════
     async function del(key, id) {
-        const obj = getObj(key);
-
+        var obj = getObj(key);
         delete obj[id];
         _cSet(key, obj);
-
-        try {
-            await FB.deleteItem(key, id);
-            await syncAll(); // 🔥 FIX
-        } catch (e) {
-            console.error('❌ delete error:', e);
-        }
+        await FB.deleteItem(key, id);
     }
 
-    // ================= STOCK =================
+    // ═══════════════════════════════════════════════
+    // STOCK helpers
+    // ═══════════════════════════════════════════════
     async function deductStock(items) {
-        const r = await FB.deductStock(items);
-
-        if (r.ok) {
-            await syncCollection('inventory');
-        }
-
+        var r = await FB.deductStock(items);
+        if (r.ok) await syncCollection('inventory');
         return r;
     }
 
@@ -216,30 +189,33 @@ const Store = (() => {
         await syncCollection('inventory');
     }
 
-    // ================= BILL =================
+    // ═══════════════════════════════════════════════
+    // BILL NUMBER
+    // ═══════════════════════════════════════════════
     async function getNextBillNumber() {
         return FB.getNextBillNumber();
     }
 
-    // ================= UTILS =================
+    // ═══════════════════════════════════════════════
+    // UTILS
+    // ═══════════════════════════════════════════════
     function genId() {
-        return Date.now().toString(36) +
-               Math.random().toString(36).substr(2, 6);
+        return Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
     }
 
     return {
-        get,
-        getObj,
-        getFresh,
-        syncCollection,
-        syncAll,
-        set,
-        add,
-        update,
+        get: get,
+        getObj: getObj,
+        getFresh: getFresh,
+        syncCollection: syncCollection,
+        syncAll: syncAll,
+        set: set,
+        add: add,
+        update: update,
         delete: del,
-        getNextBillNumber,
-        deductStock,
-        restoreStock,
-        genId
+        getNextBillNumber: getNextBillNumber,
+        deductStock: deductStock,
+        restoreStock: restoreStock,
+        genId: genId
     };
 })();
