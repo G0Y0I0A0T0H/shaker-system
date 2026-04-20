@@ -2849,5 +2849,24 @@ StockAlerts.render();
 });
 });
 </script>
+<script>
+// v14: Independent splash removal — runs outside DOMContentLoaded scope
+(function() {
+    var _removed = false;
+    function removeSplash() {
+        if (_removed) return;
+        _removed = true;
+        var splash = document.getElementById('splashScreen');
+        if (!splash) return;
+        splash.style.transition = 'opacity 0.5s ease';
+        splash.style.opacity = '0';
+        setTimeout(function() {
+            if (splash.parentNode) splash.parentNode.removeChild(splash);
+        }, 500);
+    }
+    window.addEventListener('load', removeSplash);
+    setTimeout(removeSplash, 2000);
+})();
+</script>
 </body>
 </html>
