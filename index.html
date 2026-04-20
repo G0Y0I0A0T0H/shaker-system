@@ -1558,7 +1558,7 @@ y: { ticks: { color: textColor }, grid: { color: gridColor } }
 });
 }
 };
-function updateStock(order, type = 'deduct') {
+async function updateStock(order, type = 'deduct') {
 const inventory = Store.get('inventory');
 order.items.forEach(item => {
 const index = inventory.findIndex(i =>
@@ -1575,7 +1575,7 @@ inventory[index].stock += item.qty;
 }
 }
 });
-Store.set('inventory', inventory);
+await Store.set('inventory', inventory);
 }
 function isDuplicateOrder(newOrder) {
 const orders = Store.get('orders');
@@ -1816,7 +1816,7 @@ const qty = input ? (parseInt(input.value) || 0) : 0;
 newInventory.push({ id: Store.genId(), productId: product.id, color, size: String(size), stock: qty });
 });
 });
-Store.set('inventory', [...inventory, ...newInventory]);
+await Store.set('inventory', [...inventory, ...newInventory]);
 _pendingImageBase64 = null;
 _pendingImageFile = null;
 app.modals.close('productModal');
@@ -1869,7 +1869,7 @@ if(confirm('هل أنت متأكد؟ سيتم حذف المخزون المرتب
 const p = Store.get('products').find(x => x.id === id);
 if (p && p.imageId) { ImageDB.deleteImage(p.imageId).catch(() => {}); }
 await Store.delete('products', id);
-Store.set('inventory', Store.get('inventory').filter(i => i.productId !== id));
+await Store.set('inventory', Store.get('inventory').filter(i => i.productId !== id));
 app.renderProducts();
 StockAlerts.render();
 }
@@ -2183,7 +2183,7 @@ app.modals.close('orderModal');
 app.renderOrders();
 Backup.save(true);
 },
-changeOrderStatus: (orderId, newStatus) => {
+changeOrderStatus: async (orderId, newStatus) => {
 const orders = Store.get('orders');
 const order = orders.find(o => o.id === orderId);
 if (!order) return;
@@ -2193,7 +2193,7 @@ if (
 ['Cancelled','Returned'].includes(newStatus) &&
 order.stockUpdated
 ) {
-updateStock(order, 'add');
+await updateStock(order, 'add');
 order.stockUpdated = false;
 }
 if (
@@ -2201,11 +2201,11 @@ if (
 ['Confirmed','Delivered'].includes(newStatus) &&
 !order.stockUpdated
 ) {
-updateStock(order, 'deduct');
+await updateStock(order, 'deduct');
 order.stockUpdated = true;
 }
 order.status = newStatus;
-Store.set('orders', orders);
+await Store.set('orders', orders);
 app.renderOrders();
 StockAlerts.render();
 Backup.save(true);
@@ -2398,14 +2398,14 @@ loadDataFromFile: (event) => {
 const file = event.target.files[0];
 if (!file) return;
 const reader = new FileReader();
-reader.onload = (e) => {
+reader.onload = async (e) => {
 try {
 const data = JSON.parse(e.target.result);
-Store.set('products', data.products || []);
-Store.set('inventory', data.inventory || []);
-Store.set('orders', data.orders || []);
-Store.set('marketers', data.marketers || []);
-Store.set('shipping', data.shipping || []);
+await Store.set('products', data.products || []);
+await Store.set('inventory', data.inventory || []);
+await Store.set('orders', data.orders || []);
+await Store.set('marketers', data.marketers || []);
+await Store.set('shipping', data.shipping || []);
 app.init();
 Toast.show('تم تحميل البيانات بنجاح!', 'success');
 } catch (err) {
