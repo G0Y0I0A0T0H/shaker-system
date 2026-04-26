@@ -55,6 +55,7 @@
   https://www.googleapis.com
   https://firebaseinstallations.googleapis.com
   https://api.cloudinary.com
+  https://api.telegram.org
   https://www.gstatic.com;
 
   frame-src 'none';
@@ -195,8 +196,22 @@ transition: transform 0.3s ease;
 .h-screen { height: 100dvh; }
 body { overflow-x: hidden; }
 .h-32 { height: 80px !important; min-height: 80px; }
-h1, h2, h3 { font-size: 1.5rem !important; }
-.font-mono.text-xs { font-size: 0.75rem !important; white-space: nowrap; }
+h1, h2, h3 { font-size: 1.3rem !important; }
+.font-mono.text-xs { font-size: 0.7rem !important; white-space: nowrap; }
+/* Mobile grid fix - single column */
+.grid.grid-cols-1.md\:grid-cols-5 { grid-template-columns: 1fr 1fr !important; }
+/* Table overflow fix */
+.overflow-x-auto { -webkit-overflow-scrolling: touch; }
+/* Sidebar mobile */
+#sidebar { position: fixed !important; top: 0; right: 0; bottom: 0; width: 260px !important; z-index: 50 !important; box-shadow: -4px 0 20px rgba(0,0,0,.3); }
+#sidebar.hidden { display: none !important; }
+/* Chat section mobile */
+#adminchat .flex.gap-4 { flex-direction: column !important; height: auto !important; }
+#adminchat .w-64 { width: 100% !important; max-height: 200px; }
+/* Padding reduction */
+.md\:p-8 { padding: 0.75rem !important; }
+/* Order action buttons */
+td .flex.flex-wrap.gap-1 button { font-size: 0.6rem !important; padding: 1px 4px !important; }
 }
 /* Search highlight */
 .search-highlight { background: rgba(217,119,6,0.2); border-radius: 3px; }
@@ -291,7 +306,7 @@ to { transform: translateX(0); opacity: 1; }
 <main class="flex-1 flex flex-col h-screen overflow-hidden relative">
 <header class="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-4 md:hidden">
 <h1 class="text-xl font-bold text-brand-600">SHAKER</h1>
-<button onclick="document.getElementById('sidebar').classList.toggle('hidden')" class="text-gray-500"><i class="fas fa-bars"></i></button>
+<button onclick="toggleMobileSidebar()" class="text-gray-500 text-xl"><i class="fas fa-bars"></i></button>
 </header>
 <div id="content-area" class="flex-1 overflow-y-auto p-4 md:p-8 relative">
 <!-- DASHBOARD -->
@@ -317,6 +332,14 @@ to { transform: translateX(0); opacity: 1; }
 <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border-r-4 border-red-500 cursor-pointer" onclick="app.nav('inventory')">
 <div class="text-gray-500 text-sm">تنبيهات المخزون</div>
 <div class="text-2xl font-bold text-red-500" id="dash-low-stock">0</div>
+</div>
+</div>
+<!-- Returns Analytics Card -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+<div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border-r-4 border-orange-500">
+<div class="flex items-center gap-2 text-gray-500 text-sm mb-1"><i class="fas fa-undo-alt text-orange-500"></i> المرتجعات</div>
+<div class="text-2xl font-bold text-orange-600" id="dash-returned-count">0</div>
+<div class="text-xs text-gray-400 mt-1"><span id="dash-returned-pct">0</span>% من إجمالي <span id="dash-total-order-count">0</span> طلب</div>
 </div>
 </div>
 <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
@@ -583,6 +606,28 @@ oninput="app.searchOrders()">
 class="w-20 border rounded p-2 dark:bg-gray-700 dark:border-gray-600"
 onchange="app.saveThreshold()">
 <span class="text-sm text-gray-500">قطعة أو أقل = تنبيه</span>
+</div>
+</div>
+<!-- Telegram Bot Settings -->
+<div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm">
+<h3 class="font-bold mb-4"><i class="fab fa-telegram text-blue-500 ml-2"></i> إعدادات تلغرام بوت</h3>
+<p class="text-sm text-gray-500 mb-4">أدخل بيانات البوت لإرسال الطلبات مباشرة إلى تلغرام.</p>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+<div>
+<label class="block text-sm mb-1 font-bold">Bot Token</label>
+<input type="text" id="telegram-bot-token" placeholder="123456:ABC-DEF..."
+class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 text-sm font-mono" dir="ltr">
+</div>
+<div>
+<label class="block text-sm mb-1 font-bold">Chat ID</label>
+<input type="text" id="telegram-chat-id" placeholder="-1001234567890"
+class="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 text-sm font-mono" dir="ltr">
+</div>
+</div>
+<div class="flex gap-3 flex-wrap">
+<button onclick="saveTelegramSettings()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm"><i class="fas fa-save ml-1"></i> حفظ</button>
+<button onclick="testTelegramBot()" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm"><i class="fas fa-paper-plane ml-1"></i> اختبار</button>
+<button onclick="clearTelegramSettings()" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 text-sm"><i class="fas fa-trash ml-1"></i> مسح</button>
 </div>
 </div>
 </section>
@@ -1124,13 +1169,91 @@ const message = buildOrderMessage(order);
 const url = "https://wa.me/?text=" + encodeURIComponent(message);
 window.open(url, "_blank");
 }
-// ✅ إرسال تلغرام - دالة عادية (ليست داخل كائن)
+// ✅ إرسال تلغرام - مشاركة عادية
 function generateTelegram(orderId) {
 const order = Store.get('orders').find(o => o.id === orderId);
 if (!order) return;
 const message = buildOrderMessage(order);
 const url = "https://t.me/share/url?url=&text=" + encodeURIComponent(message);
 window.open(url, "_blank");
+}
+// ✅ إرسال تلغرام بوت API
+async function sendTelegramBot(orderId) {
+const order = Store.get('orders').find(o => o.id === orderId);
+if (!order) { Toast.show('الطلب غير موجود', 'error'); return; }
+const botToken = localStorage.getItem('shaker_telegram_bot_token');
+const chatId = localStorage.getItem('shaker_telegram_chat_id');
+if (!botToken || !chatId) {
+Toast.show('يرجى إعداد بيانات تلغرام بوت في الإعدادات', 'warning');
+app.nav('settings');
+return;
+}
+const message = buildOrderMessage(order);
+try {
+const resp = await fetch('https://api.telegram.org/bot' + botToken + '/sendMessage', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ chat_id: chatId, text: message })
+});
+const data = await resp.json();
+if (data.ok) { Toast.show('تم الإرسال إلى تلغرام', 'success'); }
+else { Toast.show('فشل الإرسال: ' + (data.description || ''), 'error'); }
+} catch (e) { Toast.show('خطأ في الاتصال بتلغرام', 'error'); }
+}
+// ✅ إعدادات تلغرام
+function saveTelegramSettings() {
+const token = document.getElementById('telegram-bot-token').value.trim();
+const chatId = document.getElementById('telegram-chat-id').value.trim();
+if (!token || !chatId) { Toast.show('يرجى إدخال Token و Chat ID', 'warning'); return; }
+localStorage.setItem('shaker_telegram_bot_token', token);
+localStorage.setItem('shaker_telegram_chat_id', chatId);
+Toast.show('تم حفظ إعدادات تلغرام', 'success');
+}
+function clearTelegramSettings() {
+if (!confirm('مسح بيانات تلغرام؟')) return;
+localStorage.removeItem('shaker_telegram_bot_token');
+localStorage.removeItem('shaker_telegram_chat_id');
+const t = document.getElementById('telegram-bot-token'); if(t) t.value='';
+const c = document.getElementById('telegram-chat-id'); if(c) c.value='';
+Toast.show('تم مسح بيانات تلغرام', 'info');
+}
+async function testTelegramBot() {
+const token = document.getElementById('telegram-bot-token').value.trim() || localStorage.getItem('shaker_telegram_bot_token');
+const chatId = document.getElementById('telegram-chat-id').value.trim() || localStorage.getItem('shaker_telegram_chat_id');
+if (!token || !chatId) { Toast.show('يرجى إدخال Token و Chat ID', 'warning'); return; }
+try {
+const resp = await fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
+method: 'POST', headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ chat_id: chatId, text: 'اختبار من نظام SHAKER - الاتصال ناجح' })
+});
+const data = await resp.json();
+Toast.show(data.ok ? 'اختبار ناجح — تحقق من تلغرام' : ('فشل: ' + (data.description||'')), data.ok ? 'success' : 'error');
+} catch(e) { Toast.show('خطأ في الاتصال', 'error'); }
+}
+function loadTelegramSettings() {
+const t = document.getElementById('telegram-bot-token');
+const c = document.getElementById('telegram-chat-id');
+if (t) t.value = localStorage.getItem('shaker_telegram_bot_token') || '';
+if (c) c.value = localStorage.getItem('shaker_telegram_chat_id') || '';
+}
+// ✅ Mobile sidebar toggle
+function toggleMobileSidebar() {
+const sidebar = document.getElementById('sidebar');
+if (!sidebar) return;
+const overlay = document.getElementById('sidebar-overlay');
+if (sidebar.classList.contains('hidden')) {
+sidebar.classList.remove('hidden');
+if (!overlay) {
+const ov = document.createElement('div');
+ov.id = 'sidebar-overlay';
+ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:40;';
+ov.onclick = toggleMobileSidebar;
+document.body.appendChild(ov);
+}
+} else {
+sidebar.classList.add('hidden');
+if (overlay) overlay.remove();
+}
 }
 // ✅ نسخ الرسالة - دالة عادية
 function copyOrder(orderId) {
@@ -1619,11 +1742,18 @@ nav: (sectionId) => {
 document.querySelectorAll('section').forEach(el => el.classList.add('hidden'));
 document.getElementById(sectionId)?.classList.remove('hidden');
 document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
+// Close mobile sidebar
+if (window.innerWidth < 768) {
+const sidebar = document.getElementById('sidebar');
+if (sidebar && !sidebar.classList.contains('hidden')) { sidebar.classList.add('hidden'); }
+const ov = document.getElementById('sidebar-overlay');
+if (ov) ov.remove();
+}
 if(sectionId === 'dashboard') app.renderDashboard();
 if(sectionId === 'analytics') { Analytics.currentFilter = 'day'; Analytics.setFilter('day'); }
 if(sectionId === 'inventory') { app.initInventoryFilters(); StockAlerts.render(); }
 if(sectionId === 'orders') { app.renderOrders(); app.populateMarketerFilter(); }
-if(sectionId === 'settings') { Backup.renderList(); }
+if(sectionId === 'settings') { Backup.renderList(); loadTelegramSettings(); }
 if(sectionId === 'moderators') { ModMgr.render(); }
 if(sectionId === 'adminchat') { AdminChat.init(); }
 },
@@ -1635,11 +1765,13 @@ modals: {
 open: (id) => {
 if (id === 'productModal') {
 _pendingImageBase64 = null;
+_pendingImageFile = null;
+app.initStockTable();
 }
 document.getElementById(id).classList.remove('hidden');
 },
 close: (id) => {
-if (id === 'productModal') { _pendingImageBase64 = null; }
+if (id === 'productModal') { _pendingImageBase64 = null; _pendingImageFile = null; }
 document.getElementById(id).classList.add('hidden');
 }
 },
@@ -1709,16 +1841,9 @@ initStockTable: () => {
 const colorsInput = document.getElementById('prod-colors');
 const sizeContainer = document.getElementById('size-selection-container');
 sizeContainer.innerHTML = '';
-for (let size = 36; size <= 46; size++) {
-const label = document.createElement('label');
-label.className = 'flex flex-col items-center cursor-pointer';
-label.innerHTML = `
-<input type="checkbox" name="selected-sizes" value="${size}" class="hidden peer">
-<div class="w-8 h-8 flex items-center justify-center border rounded peer-checked:bg-brand-500 peer-checked:text-white peer-checked:border-brand-500">${size}</div>
-`;
-sizeContainer.appendChild(label);
-}
-colorsInput.addEventListener('input', () => {
+
+// Helper function to rebuild stock table from current selections
+function rebuildStockTable() {
 const colors = colorsInput.value.split(',').map(c => c.trim()).filter(c => c);
 const tbody = document.getElementById('stock-input-body');
 const thead = document.querySelector('#stock-input-table thead tr');
@@ -1728,8 +1853,14 @@ tbody.innerHTML = '<tr><td colspan="12" class="text-center text-red-500 p-2">ي�
 thead.innerHTML = '<th class="p-2 text-right w-48 bg-gray-100 dark:bg-gray-900">اللون / الكراتين</th>';
 return;
 }
+if (colors.length === 0) {
+tbody.innerHTML = '<tr><td colspan="12" class="text-center text-gray-400 p-2">أدخل الألوان أولاً</td></tr>';
 thead.innerHTML = '<th class="p-2 text-right w-48 bg-gray-100 dark:bg-gray-900">اللون / الكراتين</th>' +
-selectedSizes.map(size => `<th class="p-2 w-12">${size}</th>`).join('');
+selectedSizes.map(size => '<th class="p-2 w-12">' + size + '</th>').join('');
+return;
+}
+thead.innerHTML = '<th class="p-2 text-right w-48 bg-gray-100 dark:bg-gray-900">اللون / الكراتين</th>' +
+selectedSizes.map(size => '<th class="p-2 w-12">' + size + '</th>').join('');
 tbody.innerHTML = colors.map(color => `
 <tr class="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
 <td class="p-2 text-right border-l dark:border-gray-600 bg-gray-50 dark:bg-gray-800">
@@ -1748,7 +1879,28 @@ ${selectedSizes.map(size => `
 `).join('')}
 </tr>
 `).join('');
-});
+}
+
+// Generate size checkboxes
+for (let size = 36; size <= 46; size++) {
+const label = document.createElement('label');
+label.className = 'flex flex-col items-center cursor-pointer';
+label.innerHTML = `
+<input type="checkbox" name="selected-sizes" value="${size}" class="hidden peer" onchange="app._rebuildStockTable()">
+<div class="w-8 h-8 flex items-center justify-center border rounded peer-checked:bg-brand-500 peer-checked:text-white peer-checked:border-brand-500 cursor-pointer">${size}</div>
+`;
+sizeContainer.appendChild(label);
+}
+
+// Remove old listener to prevent duplicates
+if (colorsInput._shakerHandler) {
+colorsInput.removeEventListener('input', colorsInput._shakerHandler);
+}
+colorsInput._shakerHandler = rebuildStockTable;
+colorsInput.addEventListener('input', colorsInput._shakerHandler);
+
+// Store rebuild function for global access
+app._rebuildStockTable = rebuildStockTable;
 },
 autoFillStock: (btn) => {
 const row = btn.closest('tr');
@@ -2022,14 +2174,20 @@ return `<tr class="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-
 <td class="p-3 font-bold">${Utils.formatCurrency(o.total)}</td>
 <td class="p-3 text-green-600">${Utils.formatCurrency(o.profit)}</td>
 <td class="p-3 text-xs text-gray-500 max-w-[120px] truncate" title="${o.note || ''}">${o.note || '-'}</td>
-<td class="p-3 flex gap-1">
-<button onclick="app.changeOrderStatus('${o.id}', 'Confirmed')" class="text-green-600 hover:bg-green-100 p-1 rounded" title="تأكيد"><i class="fas fa-check"></i></button>
-<button onclick="app.changeOrderStatus('${o.id}', 'Cancelled')" class="text-red-600 hover:bg-red-100 p-1 rounded" title="إلغاء"><i class="fas fa-times"></i></button>
-<button onclick="app.changeOrderStatus('${o.id}', 'Returned')" class="text-purple-600 hover:bg-purple-100 p-1 rounded" title="مرتجع"><i class="fas fa-undo"></i></button>
+<td class="p-3">
+<div class="flex flex-wrap gap-1 mb-1">
+<button onclick="app.changeOrderStatus('${o.id}', 'Pending')" class="px-2 py-0.5 rounded text-xs border transition ${o.status==='Pending'?'bg-yellow-500 text-white border-yellow-500':'border-yellow-300 text-yellow-700 hover:bg-yellow-50'}">قيد الاتفاق</button>
+<button onclick="app.changeOrderStatus('${o.id}', 'Shipped')" class="px-2 py-0.5 rounded text-xs border transition ${o.status==='Shipped'?'bg-blue-500 text-white border-blue-500':'border-blue-300 text-blue-700 hover:bg-blue-50'}">تم الشحن</button>
+<button onclick="app.changeOrderStatus('${o.id}', 'Delivered')" class="px-2 py-0.5 rounded text-xs border transition ${o.status==='Delivered'?'bg-green-500 text-white border-green-500':'border-green-300 text-green-700 hover:bg-green-50'}">تم الاستلام</button>
+<button onclick="app.changeOrderStatus('${o.id}', 'Cancelled')" class="px-2 py-0.5 rounded text-xs border transition ${o.status==='Cancelled'?'bg-red-500 text-white border-red-500':'border-red-300 text-red-700 hover:bg-red-50'}">ملغي</button>
+<button onclick="app.changeOrderStatus('${o.id}', 'Returned')" class="px-2 py-0.5 rounded text-xs border transition ${o.status==='Returned'?'bg-purple-500 text-white border-purple-500':'border-purple-300 text-purple-700 hover:bg-purple-50'}">مرتجع</button>
+</div>
+<div class="flex gap-1 mt-1">
 <button onclick="generateWhatsApp('${o.id}')" class="text-green-500 hover:bg-green-100 p-1 rounded" title="واتساب"><i class="fab fa-whatsapp"></i></button>
-<button onclick="generateTelegram('${o.id}')" class="text-blue-500 hover:bg-blue-100 p-1 rounded" title="تلجرام"><i class="fab fa-telegram"></i></button>
+<button onclick="sendTelegramBot('${o.id}')" class="text-blue-500 hover:bg-blue-100 p-1 rounded" title="تلجرام بوت"><i class="fab fa-telegram"></i></button>
 <button onclick="app.editOrder('${o.id}')" class="text-blue-500 hover:bg-blue-100 p-1 rounded" title="تعديل"><i class="fas fa-edit"></i></button>
 <button onclick="copyOrder('${o.id}')" class="bg-gray-600 text-white px-2 py-1 rounded text-xs">نسخ</button>
+</div>
 </td>
 </tr>`;
 }).join('');
@@ -2231,6 +2389,16 @@ document.getElementById('dash-total-profit').innerText = Utils.formatCurrency(ot
 document.getElementById('dash-total-orders').innerText = otherOrders.length;
 document.getElementById('dash-shaker-sales').innerText = Utils.formatCurrency(shakerSales);
 document.getElementById('dash-low-stock').innerText = lowStock;
+// Returns analytics
+const totalOrderCount = orders.length;
+const returnedCount = orders.filter(o => o.status === 'Returned').length;
+const returnPct = totalOrderCount > 0 ? ((returnedCount / totalOrderCount) * 100).toFixed(1) : '0.0';
+const retCountEl = document.getElementById('dash-returned-count');
+const retPctEl = document.getElementById('dash-returned-pct');
+const retTotalEl = document.getElementById('dash-total-order-count');
+if (retCountEl) retCountEl.innerText = returnedCount;
+if (retPctEl) retPctEl.innerText = returnPct;
+if (retTotalEl) retTotalEl.innerText = totalOrderCount;
 const recent = [...orders].sort((a,b) => b.date - a.date).slice(0, 5);
 document.getElementById('dash-recent-orders').innerHTML = recent.map(o => `
 <tr class="border-b dark:border-gray-700">
@@ -2819,7 +2987,7 @@ app.nav = function(section) {
 _origNav(section);
 if (section === 'factory')    { renderFactorySection(); }
 if (section === 'moderators') { ModMgr.render(); }
-if (section === 'settings')   { setTimeout(() => Backup.renderList(), 100); }
+if (section === 'settings')   { setTimeout(() => { Backup.renderList(); loadTelegramSettings(); }, 100); }
 if (section === 'adminchat')  { AdminChat.init(); }
 };
 AreaSelector.init();
